@@ -1,0 +1,138 @@
+{% extends "admin/change_form.html" %} 
+
+{% block extrahead %} 
+{{ block.super }}
+<!-- MapLibre GL JS -->
+<link href="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.js"></script>
+
+<!-- MapLibre Geocoder -->
+<script src="https://unpkg.com/@maplibre/maplibre-gl-geocoder@1.5.0/dist/maplibre-gl-geocoder.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@maplibre/maplibre-gl-geocoder@1.5.0/dist/maplibre-gl-geocoder.css" type="text/css" />
+
+<style>
+    /* Hide the default OpenLayers map from GISModelAdmin */
+    #id_location_map { display: none !important; }
+    
+    /* Our custom MapLibre map */
+    #maplibre-admin-map {
+        width: 100%;
+        height: 400px;
+        margin-top: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // Check if location field exists on this form
+    var locationInput = document.getElementById("id_location");
+    if (!locationInput) return;
+
+    // Create the map container just before the location input
+    var mapContainer = document.createElement('div');
+    mapContainer.id = 'maplibre-admin-map';
+    locationInput.parentNode.insertBefore(mapContainer, locationInput);
+    
+    // Default coords (Zimbabwe)
+    var initialLng = 29.15;
+    var initialLat = -19.01;
+    var initialZoom = 5;
+
+    // Parse existing location if it exists
+    if (locationInput.value && locationInput.value.includes('Point')) {
+        try {
+            // Django might output WKT or GeoJSON depending on the widget. GISModelAdmin usually outputs WKT.
+            // But if we override it, or if it's JSON:
+            let val = locationInput.value;
+            if (val.startsWith('{')) {
+                let geojson = JSON.parse(val);
+                initialLng = geojson.coordinates[0];
+                initialLat = geojson.coordinates[1];
+                initialZoom = 14;
+            } else if (val.startsWith('SRID=4326;POINT')) {
+                // Parse WKT "SRID=4326;POINT (29.15 -19.01)"
+                let coords = val.match(/POINT\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
+                if (coords) {
+                    initialLng = parseFloat(coords[1]);
+                    initialLat = parseFloat(coords[2]);
+                    initialZoom = 14;
+                }
+            }
+        } catch(e) { console.error("Error parsing location", e); }
+    }
+
+    var map = new maplibregl.Map({
+        container: 'maplibre-admin-map',
+        style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+        center: [initialLng, initialLat],
+        zoom: initialZoom
+    });
+
+    var currentMarker = null;
+
+    if (initialZoom === 14) {
+        currentMarker = new maplibregl.Marker({ color: "#dc3545" })
+            .setLngLat([initialLng, initialLat])
+            .addTo(map);
+    }
+
+    // Geocoder
+    var geocoderApi = {
+        forwardGeocode: async (config) => {
+            const features = [];
+            try {
+                let request = `https://nominatim.openstreetmap.org/search?q=${config.query}&format=geojson&polygon_geojson=1&addressdetails=1`;
+                const response = await fetch(request);
+                const geojson = await response.json();
+                for (let feature of geojson.features) {
+                    let center = [
+                        feature.bbox[0] + (feature.bbox[2] - feature.bbox[0]) / 2,
+                        feature.bbox[1] + (feature.bbox[3] - feature.bbox[1]) / 2
+                    ];
+                    let point = {
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: center },
+                        place_name: feature.properties.display_name,
+                        properties: feature.properties,
+                        text: feature.properties.display_name,
+                        place_type: ['place'],
+                        center: center
+                    };
+                    features.push(point);
+                }
+            } catch (e) { console.error("Geocoding failed", e); }
+            return { features: features };
+        }
+    };
+
+    var geocoder = new MaplibreGeocoder(geocoderApi, { maplibregl: maplibregl, placeholder: "Search for location..." });
+    map.addControl(geocoder);
+
+    geocoder.on('result', function(e) {
+        updateLocation(e.result.center, e.result.place_name);
+    });
+
+    map.on('click', function(e) {
+        updateLocation([e.lngLat.lng, e.lngLat.lat], '');
+    });
+
+    function updateLocation(lngLat, address) {
+        if (currentMarker) currentMarker.remove();
+        
+        currentMarker = new maplibregl.Marker({ color: "#dc3545" })
+            .setLngLat(lngLat)
+            .addTo(map);
+
+        // Update Django form
+        locationInput.value = `SRID=4326;POINT (${lngLat[0]} ${lngLat[1]})`;
+
+        var locationNameInput = document.getElementById("id_location_name");
+        if (locationNameInput && address) {
+            locationNameInput.value = address;
+        }
+    }
+});
+</script>
+{% endblock %}

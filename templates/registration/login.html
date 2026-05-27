@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center vh-100">
+    <div class="card shadow-lg border-0 rounded-4" style="max-width: 600px; width: 100%;">
+        <div class="card-body p-5">
+            <div class="text-center mb-5">
+                <i class="bi bi-shield-lock-fill display-4 text-primary"></i>
+                <h3 class="mt-3 fw-bold">ZimEpi Login</h3>
+                <p class="text-muted">Select your role to access the system.</p>
+            </div>
+            
+            {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'warning' }} py-2 px-3 small rounded-3">
+                    <i class="bi bi-info-circle-fill me-2"></i> {{ message }}
+                </div>
+                {% endfor %}
+            {% endif %}
+            
+            {% if form.errors %}
+                <div class="alert alert-danger py-2 px-3 small rounded-3">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i> Invalid username or password.
+                </div>
+            {% endif %}
+
+            <!-- Role Selection Cards -->
+            <div class="row g-4 mb-4">
+                <div class="col-md-6">
+                    <div class="card h-100 border-2 border-primary role-card cursor-pointer" onclick="selectRole('admin', 'adminpass')">
+                        <div class="card-body text-center p-4 custom-hover-effect">
+                            <i class="bi bi-map-fill display-5 text-primary mb-3"></i>
+                            <h5 class="fw-bold">Administrator</h5>
+                            <p class="small text-muted mb-0">Access Map Dashboard & Analytics</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100 border-2 border-success role-card cursor-pointer" onclick="selectRole('user1', 'userpass')">
+                        <div class="card-body text-center p-4 custom-hover-effect">
+                            <i class="bi bi-clipboard2-pulse-fill display-5 text-success mb-3"></i>
+                            <h5 class="fw-bold">Health Personnel</h5>
+                            <p class="small text-muted mb-0">Report & Manage Disease Cases</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form wrapper replacing the hidden one -->
+            <form id="visibleLoginForm" method="post" action="{% url 'login' %}">
+                {% csrf_token %}
+                
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary">Username</label>
+                    <input type="text" id="visibleUsername" name="username" class="form-control form-control-lg rounded-3" placeholder="Enter username" required autofocus>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="form-label small fw-semibold text-secondary">Password</label>
+                    <input type="password" id="visiblePassword" name="password" class="form-control form-control-lg rounded-3" placeholder="Enter password" required>
+                </div>
+
+                <div class="d-grid mt-4">
+                    <button type="submit" id="btnSignIn" class="btn btn-primary btn-lg rounded-pill fw-bold shadow-sm">Sign In <i class="bi bi-box-arrow-in-right ms-2"></i></button>
+                    <input type="hidden" name="next" value="{{ next }}" />
+                </div>
+            </form>
+            
+            <div class="text-center mt-4 pt-4 border-top">
+                <p class="small text-muted mb-0"><i class="bi bi-lock-fill me-1"></i> Secure System Access</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .cursor-pointer { cursor: pointer; transition: all 0.2s ease; }
+    .cursor-pointer:hover { transform: translateY(-5px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
+    .custom-hover-effect { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+</style>
+
+<script>
+    function selectRole(username, password) {
+        // Populate the standard visible form fields so user can see them
+        document.getElementById('visibleUsername').value = username;
+        document.getElementById('visiblePassword').value = password;
+        
+        // Add a slight visual pulse to the button to indicate it's ready
+        const btn = document.getElementById('btnSignIn');
+        btn.classList.add('btn-success');
+        btn.classList.remove('btn-primary');
+        
+        setTimeout(() => {
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+        }, 800);
+        
+        // Focus the button so they can just hit enter or click it
+        btn.focus();
+    }
+</script>
+{% endblock %}

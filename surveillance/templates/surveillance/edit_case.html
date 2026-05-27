@@ -1,0 +1,490 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+                <h2 class="fw-bold m-0"><i class="bi bi-pencil-square text-primary me-2"></i> Edit Case</h2>
+                <a href="{% url 'manage_cases' %}" class="btn btn-outline-dark rounded-pill fw-bold">
+                    <i class="bi bi-arrow-left me-2"></i> Back to Cases
+                </a>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4 bg-light">
+                    <form method="POST">
+                        {% csrf_token %}
+                        <!-- Added submit handler to form to validate markers before save -->
+                        <div class="row g-3" id="editFormRow">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-secondary">Disease Type</label>
+                                <input type="text" class="form-control" name="disease_type" list="diseaseOptionsEdit" value="{{ case.disease_type }}" required autoComplete="off">
+                                <datalist id="diseaseOptionsEdit">
+                                    {% for d in diseases %}
+                                        <option value="{{ d }}">{{ d|title }}</option>
+                                    {% empty %}
+                                        <option value="cholera">Cholera</option>
+                                        <option value="tb">Tuberculosis (TB)</option>
+                                        <option value="hiv">HIV/AIDS</option>
+                                    {% endfor %}
+                                </datalist>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-secondary">Variant / Strain</label>
+                                <input type="text" class="form-control" name="variant" value="{{ case.variant|default:'' }}">
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-secondary">Age</label>
+                                <input type="number" class="form-control" name="age" value="{{ case.age|default:'' }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-secondary">Gender</label>
+                                <select class="form-select" name="gender">
+                                    <option value="U" {% if case.gender == 'U' %}selected{% endif %}>Unknown</option>
+                                    <option value="M" {% if case.gender == 'M' %}selected{% endif %}>Male</option>
+                                    <option value="F" {% if case.gender == 'F' %}selected{% endif %}>Female</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-secondary">Date of Onset</label>
+                                <input type="date" class="form-control" name="date_of_onset" value="{{ case.date_of_onset|date:'Y-m-d' }}">
+                            </div>
+
+                            <div class="col-md-6 mt-3">
+                                <label class="form-label small fw-bold text-secondary">Severity</label>
+                                <select class="form-select" name="severity">
+                                    <option value="1" {% if case.severity == 1 %}selected{% endif %}>Suspected</option>
+                                    <option value="2" {% if case.severity == 2 %}selected{% endif %}>Probable</option>
+                                    <option value="3" {% if case.severity == 3 %}selected{% endif %}>Confirmed</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mt-3">
+                                <label class="form-label small fw-bold text-secondary">Outcome</label>
+                                <select class="form-select" name="outcome">
+                                    <option value="active" {% if case.outcome == 'active' %}selected{% endif %}>Active / Treatment</option>
+                                    <option value="recovered" {% if case.outcome == 'recovered' %}selected{% endif %}>Recovered</option>
+                                    <option value="deceased" {% if case.outcome == 'deceased' %}selected{% endif %}>Deceased</option>
+                                    <option value="referred" {% if case.outcome == 'referred' %}selected{% endif %}>Referred Out</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12 mt-4">
+                                <h6 class="fw-bold border-bottom pb-2">Location Mapping</h6>
+                                <label class="form-label small fw-bold text-secondary">Reporting Health Facility</label>
+                                <select class="form-select custom-select2" name="facility_id" id="reportFacility" required>
+                                    <option value="">Select or type a facility name...</option>
+                                    {% for f in facilities %}
+                                    <option value="{{ f.id }}" data-lat="{{ f.location.y }}" data-lng="{{ f.location.x }}" {% if case.facility and case.facility.id == f.id %}selected{% endif %}>{{ f.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="hidden" name="new_facility_lat" id="new_facility_lat">
+                                <input type="hidden" name="new_facility_lng" id="new_facility_lng">
+                            </div>
+                            
+                            <div class="col-12 mt-3">
+                                <label class="form-label small fw-bold text-secondary">Patient Residence / Origin Address</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                                    <input type="text" class="form-control" id="reportLocationSearch" placeholder="Type an address or town (e.g., Kuwadzana)...">
+                                    <button type="button" class="btn btn-outline-primary fw-bold" id="btnGeocode">Locate Coordinates</button>
+                                </div>
+                            </div>
+                            
+                                <div class="d-flex justify-content-between align-items-end mb-2">
+                                    <label class="form-label small fw-bold text-secondary m-0">Confirm Residence Rooftop</label>
+                                    <button type="button" class="btn btn-sm btn-outline-danger fw-bold" id="btnPinpointMe">
+                                        <i class="bi bi-geo-alt-fill"></i> Pinpoint My Location
+                                    </button>
+                                </div>
+                                <div id="reportMiniMap" style="height: 350px; width: 100%; border-radius: 8px; z-index: 1;" class="border shadow-sm"></div>
+                                <input type="hidden" name="lat" id="reportLat" value="{{ case.latitude }}">
+                                <input type="hidden" name="lng" id="reportLng" value="{{ case.longitude }}">
+                                <input type="hidden" name="plus_code" id="reportPlusCode">
+                                <input type="hidden" name="w3w" id="reportW3W">
+                            </div>
+
+                            <div class="col-12 mt-4 text-end">
+                                <button type="submit" class="btn btn-primary rounded-pill px-5 fw-bold shadow">
+                                    Update Case Data
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+    <!-- Ensure Referer is sent to prevent OSM Tile blocking on Localhost -->
+    <meta name="referrer" content="no-referrer-when-downgrade">
+
+    <!-- Include MapLibre GL JS since we need the mini map for reporting case -->
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    
+    <!-- Open Location Code (Plus Codes) -->
+    <script src="https://unpkg.com/open-location-code@1.0.3/open-location-code.js"></script>
+    
+    <!-- jQuery and Select2 -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    
+    <!-- jQuery UI for Advanced Autocomplete Search -->
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+    <style>
+        .ui-autocomplete {
+            max-height: 200px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            z-index: 1050; /* Above modals/maps */
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 4px;
+        }
+    </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let reportMap, patientMarker, facilityMarker;
+
+    const esriImageryStyle = {
+        "version": 8,
+        "sources": {
+            "esri-satellite": {
+                "type": "raster",
+                "tiles": ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+                "tileSize": 256,
+                "maxzoom": 18
+            },
+            "osm-labels": {
+                "type": "raster",
+                "tiles": [
+                    "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                ],
+                "tileSize": 256,
+                "maxzoom": 19
+            }
+        },
+        "layers": [
+            {
+                "id": "esri-satellite-layer",
+                "type": "raster",
+                "source": "esri-satellite",
+                "minzoom": 0,
+                "maxzoom": 22
+            },
+            {
+                "id": "osm-labels-layer",
+                "type": "raster",
+                "source": "osm-labels",
+                "paint": {"raster-opacity": 0.4},
+                "minzoom": 0,
+                "maxzoom": 22
+            }
+        ]
+    };
+
+    $(document).ready(function() {
+        if ($.fn.select2) {
+            $('.custom-select2').select2({ 
+                theme: 'bootstrap-5', 
+                width: '100%',
+                tags: true
+            });
+        }
+        
+        // Initialize Map
+        const initLat = parseFloat("{{ case.latitude|default:0 }}");
+        const initLng = parseFloat("{{ case.longitude|default:0 }}");
+        const center = (initLat && initLng) ? [initLng, initLat] : [29.155, -19.015];
+        
+        reportMap = new maplibregl.Map({
+            container: 'reportMiniMap',
+            style: esriImageryStyle,
+            center: center,
+            zoom: (initLat && initLng) ? 18 : 6
+        });
+        reportMap.addControl(new maplibregl.NavigationControl());
+        
+        if (initLat && initLng) {
+            placePatientMarker({lat: initLat, lng: initLng});
+        }
+        
+        // Initial facility marker
+        const selectedOpt = $('#reportFacility').find(':selected');
+        if (selectedOpt.val()) {
+            const fLat = selectedOpt.attr('data-lat');
+            const fLng = selectedOpt.attr('data-lng');
+            if (fLat && fLng) {
+                placeFacilityMarker({lat: parseFloat(fLat), lng: parseFloat(fLng)}, selectedOpt.text());
+            }
+        }
+
+        reportMap.on('click', function(e) {
+            placePatientMarker(e.lngLat);
+        });
+    });
+
+    function placePatientMarker(lngLat) {
+        if (patientMarker) patientMarker.remove();
+        
+        const el = document.createElement('div');
+        el.className = 'custom-div-icon';
+        el.style.backgroundColor = '#dc3545';
+        el.style.width = '14px';
+        el.style.height = '14px';
+        el.style.borderRadius = '50%';
+        el.style.border = '2px solid white';
+        el.style.boxShadow = '0 0 4px rgba(0,0,0,0.5)';
+        el.style.cursor = 'pointer';
+        
+        patientMarker = new maplibregl.Marker({element: el, draggable: true})
+            .setLngLat(lngLat)
+            .addTo(reportMap);
+            
+        // Setup dragged event
+        patientMarker.on('dragend', () => {
+            const newLngLat = patientMarker.getLngLat();
+            updateCoordsFields(newLngLat);
+            resolveLocationDetails(newLngLat);
+        });
+        
+        updateCoordsFields(lngLat);
+        resolveLocationDetails(lngLat);
+    }
+    
+    function updateCoordsFields(lngLat) {
+        document.getElementById('reportLat').value = lngLat.lat.toFixed(6);
+        document.getElementById('reportLng').value = lngLat.lng.toFixed(6);
+    }
+
+    async function resolveLocationDetails(lngLat) {
+        // 1. Generate Plus Code
+        const plusCode = OpenLocationCode.encode(lngLat.lat, lngLat.lng, 11);
+        
+        // 2. Fetch Reverse Geocode from Nominatim
+        let nearestLandmark = "Unknown Area";
+        try {
+            const nomRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lngLat.lat}&lon=${lngLat.lng}&zoom=18`);
+            const nomData = await nomRes.json();
+            if (nomData && nomData.address) {
+                const ad = nomData.address;
+                nearestLandmark = ad.amenity || ad.road || ad.village || ad.hamlet || ad.suburb || ad.city || "Unnamed area";
+            }
+        } catch (e) {
+            console.error("Reverse geocoding failed", e);
+        }
+        
+        // 3. Fetch what3words
+        let w3wAddress = "///pending.api.key";
+        const YOUR_W3W_API_KEY = "YOUR_W3W_API_KEY"; // Placeholder
+        if (YOUR_W3W_API_KEY !== "YOUR_W3W_API_KEY") {
+            try {
+                const w3wRes = await fetch(`https://api.what3words.com/v3/convert-to-3wa?coordinates=${lngLat.lat},${lngLat.lng}&key=${YOUR_W3W_API_KEY}`);
+                const w3wData = await w3wRes.json();
+                if (w3wData && w3wData.words) {
+                    w3wAddress = "///" + w3wData.words;
+                }
+            } catch (e) {
+                console.error("w3w failed", e);
+            }
+        }
+        
+        // Setup Popup HTML
+        const popupContent = `
+            <div style="font-family: Inter, sans-serif; font-size: 13px; line-height: 1.5; min-width: 160px;">
+                <strong style="color: #dc3545; border-bottom: 1px solid #eee; display: block; padding-bottom: 4px; margin-bottom: 6px;">Residence Location</strong>
+                <div><strong>Coordinates:</strong> ${lngLat.lat.toFixed(6)}, ${lngLat.lng.toFixed(6)}</div>
+                <div><strong>Plus Code:</strong> ${plusCode}</div>
+                <div><strong>Near:</strong> ${nearestLandmark}</div>
+                <div><strong>w3w:</strong> ${w3wAddress}</div>
+            </div>
+        `;
+        
+        if (patientMarker) {
+            if (!patientMarker.getPopup()) {
+                patientMarker.setPopup(new maplibregl.Popup({ offset: 15 }));
+            }
+            patientMarker.getPopup().setHTML(popupContent);
+            if (!patientMarker.getPopup().isOpen()) {
+                patientMarker.togglePopup();
+            }
+        }
+        
+        // Populate hidden inputs if added
+        const hiddenPlusCode = document.getElementById('reportPlusCode');
+        if(hiddenPlusCode) hiddenPlusCode.value = plusCode;
+        
+        const hiddenW3W = document.getElementById('reportW3W');
+        if(hiddenW3W) hiddenW3W.value = w3wAddress;
+    }
+    
+    function placeFacilityMarker(lngLat, name) {
+        if (facilityMarker) facilityMarker.remove();
+        
+        const el = document.createElement('div');
+        el.className = 'custom-div-icon';
+        el.style.backgroundColor = '#0d6efd';
+        el.style.width = '14px';
+        el.style.height = '14px';
+        el.style.borderRadius = '50%';
+        el.style.border = '2px solid white';
+        el.style.boxShadow = '0 0 4px rgba(0,0,0,0.5)';
+        
+        facilityMarker = new maplibregl.Marker({element: el})
+            .setLngLat(lngLat)
+            .setPopup(new maplibregl.Popup({ offset: 25 }).setText("Facility: " + name))
+            .addTo(reportMap);
+    }
+
+    $('#reportFacility').on('change', function() {
+        const option = $(this).find(':selected');
+        const lat = option.attr('data-lat');
+        const lng = option.attr('data-lng');
+        const name = option.text();
+        
+        if (lat && lng) {
+            const lngLat = { lat: parseFloat(lat), lng: parseFloat(lng) };
+            if (reportMap) {
+                reportMap.flyTo({center: [lngLat.lng, lngLat.lat], zoom: 10});
+                placeFacilityMarker(lngLat, name);
+            }
+            $('#new_facility_lat').val('');
+            $('#new_facility_lng').val('');
+        } else {
+            if (name) {
+                // Dynamically fetch coordinates for custom tag facility using Mapbox
+                const mapboxToken = 'pk.eyJ1IjoibGVlcm95bTkiLCJhIjoiY21vYTZjaGx4MDQ5djJzcXl0bGpxbGRwaSJ9.pgjKuxq6py5bUrTv_E9M8Q';
+                const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(name)}.json?access_token=${mapboxToken}&country=zw&limit=1`;
+                fetch(url).then(r => r.json()).then(data => {
+                    if (data.features && data.features.length > 0) {
+                        const feature = data.features[0];
+                        const lngLat = { lat: feature.center[1], lng: feature.center[0] };
+                        if (reportMap) reportMap.flyTo({center: [lngLat.lng, lngLat.lat], zoom: 14});
+                        placeFacilityMarker(lngLat, name);
+                        $('#new_facility_lat').val(lngLat.lat);
+                        $('#new_facility_lng').val(lngLat.lng);
+                    } else {
+                        alert('Custom facility "' + name + '" not found in Zimbabwe automatically. Form requires valid coordinates if submitting an unlisted clinic.');
+                        if (facilityMarker && reportMap) {
+                            facilityMarker.remove();
+                            facilityMarker = null;
+                        }
+                        $('#new_facility_lat').val('');
+                        $('#new_facility_lng').val('');
+                    }
+                });
+            } else {
+                if (facilityMarker && reportMap) {
+                    facilityMarker.remove();
+                    facilityMarker = null;
+                }
+            }
+        }
+    });
+
+    // Advanced Google-Maps-Like Autocomplete Search using Mapbox
+    const mapboxToken = 'pk.eyJ1IjoibGVlcm95bTkiLCJhIjoiY21vYTZjaGx4MDQ5djJzcXl0bGpxbGRwaSJ9.pgjKuxq6py5bUrTv_E9M8Q';
+    $("#reportLocationSearch").autocomplete({
+        source: function(request, response) {
+            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(request.term)}.json?access_token=${mapboxToken}&country=zw&autocomplete=true&limit=5`;
+            $.ajax({
+                url: url,
+                dataType: "json",
+                success: function(data) {
+                    if (data.features) {
+                        response($.map(data.features, function(item) {
+                            return {
+                                label: item.place_name,
+                                value: item.place_name,
+                                center: item.center // [lng, lat]
+                            }
+                        }));
+                    } else {
+                        response([]);
+                    }
+                }
+            });
+        },
+        minLength: 3,
+        select: function(event, ui) {
+            if (ui.item && ui.item.center) {
+                const lngLat = { lat: ui.item.center[1], lng: ui.item.center[0] };
+                reportMap.flyTo({center: [lngLat.lng, lngLat.lat], zoom: 16});
+                placePatientMarker(lngLat);
+            }
+        }
+    });
+
+    // Fallback for manual button click
+    document.getElementById('btnGeocode').addEventListener('click', function() {
+        const query = document.getElementById('reportLocationSearch').value;
+        if (!query) return;
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxToken}&country=zw&limit=1`;
+        
+        fetch(url).then(r => r.json()).then(data => {
+            if (data.features && data.features.length > 0) {
+                const feature = data.features[0];
+                const lngLat = { lat: feature.center[1], lng: feature.center[0] };
+                reportMap.flyTo({center: [lngLat.lng, lngLat.lat], zoom: 16});
+                placePatientMarker(lngLat);
+            } else {
+                alert('Location not found in Zimbabwe. Please click on the map manually.');
+            }
+        });
+    });
+
+    // GPS Pinpoint Logic
+    document.getElementById('btnPinpointMe').addEventListener('click', function() {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            return;
+        }
+        
+        const btn = this;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Locating...';
+        btn.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lngLat = { 
+                    lng: position.coords.longitude, 
+                    lat: position.coords.latitude 
+                };
+                reportMap.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 18 });
+                placePatientMarker(lngLat);
+                
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            },
+            (error) => {
+                alert('Unable to retrieve your location: ' + error.message);
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    });
+    
+    // Validate both markers exist before allowing normal form submission
+    $('form').on('submit', function(e) {
+        if (!patientMarker || !facilityMarker) {
+            e.preventDefault();
+            alert('Both the patient origin (red) and the facility (blue) must be visually marked on the map before saving.');
+            return false;
+        }
+    });
+</script>
+{% endblock %}

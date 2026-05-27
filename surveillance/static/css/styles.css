@@ -1,0 +1,293 @@
+/* Light Theme Variables */
+:root {
+    --bg-main: #f8f9fa;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --glass-bg: rgba(255, 255, 255, 0.75); /* Increased transparency for better glass effect */
+    --glass-border: rgba(255, 255, 255, 0.6);
+    --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.12); /* Slightly deeper shadow */
+}
+
+/* Base & Typography */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-main);
+    background-color: var(--bg-main);
+    overflow-x: hidden;
+}
+
+/* Glassmorphism Utilities (Reverted to Crisp Light Panels) */
+.glass-panel {
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: var(--glass-shadow) !important;
+    color: var(--text-main) !important;
+}
+
+.glass-panel .text-secondary, .glass-panel .text-muted {
+    color: var(--text-muted) !important;
+}
+
+.glass-panel h4, .glass-panel h5, .glass-panel h6, .glass-panel label {
+    color: var(--text-main) !important;
+}
+
+.glass-panel .card-body {
+    background: transparent !important;
+}
+
+/* Sidebar Custom Styling */
+.side-panel {
+    z-index: 1000;
+}
+
+.custom-switch-disease .form-check-input {
+    width: 2.5em;
+    height: 1.25em;
+    cursor: pointer;
+    background-color: rgba(0,0,0,0.1);
+    border-color: rgba(0,0,0,0.2);
+}
+
+.custom-switch-disease .form-check-input:checked[value="cholera"] {
+    background-color: #0dcaf0;
+    border-color: #0dcaf0;
+}
+
+.custom-switch-disease .form-check-input:checked[value="tb"] {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+.custom-switch-disease .form-check-input:checked[value="hiv"] {
+    background-color: #6f42c1;
+    border-color: #6f42c1;
+}
+
+/* Map Interactions */
+#mainmap {
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-main);
+}
+
+.map-legend-overlay {
+    position: absolute;
+    bottom: 30px;
+    right: 30px;
+    z-index: 1000;
+    min-width: 200px;
+}
+
+#map-status-filters {
+    position: absolute;
+    top: 60px;
+    right: 30px;
+    z-index: 1000;
+    width: 220px;
+    max-height: 450px;
+    overflow-y: auto;
+}
+
+.fullscreen-filter-overlay {
+    position: absolute !important;
+    z-index: 9999 !important;
+    border-radius: 8px !important;
+    margin: 0 !important;
+    padding: 10px !important;
+}
+
+.fullscreen-filter-overlay .card {
+    background-color: var(--glass-bg) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+    margin-bottom: 8px !important;
+    border-radius: 8px !important;
+}
+
+.fullscreen-filter-overlay .card-body {
+    padding: 4px 6px !important;
+}
+
+.fullscreen-filter-overlay h6 {
+    margin-bottom: 6px !important;
+    font-size: 11px !important;
+    color: var(--text-main) !important;
+}
+
+.fullscreen-filter-overlay .mb-3 {
+    margin-bottom: 6px !important;
+}
+
+.fullscreen-filter-overlay .form-label {
+    font-size: 11px !important;
+    margin-bottom: 2px !important;
+}
+
+.fullscreen-filter-overlay .select2-container--bootstrap-5 .select2-selection {
+    min-height: 26px !important;
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+}
+
+.fullscreen-filter-overlay .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+    line-height: 20px !important;
+}
+
+.fullscreen-filter-overlay .form-check-label {
+    font-size: 12px !important;
+}
+
+.fs-left-group {
+    top: 90px !important;
+    left: 15px !important;
+    width: 170px !important;
+    max-height: calc(100% - 100px);
+    overflow: visible !important; /* Critical to prevent Select2 clipping */
+}
+
+.fs-time-slider {
+    bottom: 30px !important;
+    left: 20px !important;
+    transform: none !important;
+    width: 260px !important;
+    top: auto !important;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.legend-color-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    margin-right: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* Leaflet Cluster Overrides */
+.marker-cluster-small { background-color: rgba(13, 202, 240, 0.4); }
+.marker-cluster-small div { background-color: rgba(13, 202, 240, 0.9); color: white; }
+
+.marker-cluster-medium { background-color: rgba(220, 53, 69, 0.4); }
+.marker-cluster-medium div { background-color: rgba(220, 53, 69, 0.9); color: white; }
+
+.marker-cluster-large { background-color: rgba(111, 66, 193, 0.4); }
+.marker-cluster-large div { background-color: rgba(111, 66, 193, 0.9); color: white; }
+
+/* Custom Leaflet Popups */
+.leaflet-popup-content-wrapper {
+    border-radius: 8px;
+    box-shadow: var(--glass-shadow);
+    padding: 0;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+}
+.leaflet-popup-tip {
+    background: var(--glass-bg);
+}
+.leaflet-popup-content {
+    margin: 15px;
+    font-family: 'Inter', sans-serif;
+}
+.popup-header {
+    font-weight: 700;
+    font-size: 1.1em;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    color: var(--text-main);
+}
+.popup-detail {
+    margin: 0;
+    font-size: 0.9em;
+    color: var(--text-muted);
+    line-height: 1.6;
+}
+
+/* Time Slider Overrides */
+.noUi-connect {
+    background: #0dcaf0;
+}
+.noUi-horizontal .noUi-handle {
+    width: 18px;
+    height: 18px;
+    right: -9px;
+    top: -2px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #0dcaf0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+}
+.noUi-handle:before,
+.noUi-handle:after {
+    display: none;
+}
+.noUi-target {
+    background: rgba(0,0,0,0.1);
+    border: none;
+    border-radius: 4px;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* DataTables Styling for Light Mode */
+#interactiveDatasetTable.dataTable tbody tr {
+    background-color: transparent !important;
+}
+#interactiveDatasetTable.dataTable tbody th, 
+#interactiveDatasetTable.dataTable tbody td {
+    padding: 6px 10px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--glass-border);
+    color: var(--text-main);
+}
+#interactiveDatasetTable.dataTable thead th, 
+#interactiveDatasetTable.dataTable thead td {
+    padding: 8px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 2px solid rgba(0,0,0,0.1);
+    background-color: rgba(0,0,0,0.02);
+    color: var(--text-main);
+}
+.dataTables_wrapper .dataTables_length, 
+.dataTables_wrapper .dataTables_filter, 
+.dataTables_wrapper .dataTables_info, 
+.dataTables_wrapper .dataTables_processing, 
+.dataTables_wrapper .dataTables_paginate {
+    color: var(--text-muted) !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    color: var(--text-muted) !important;
+}
+table.dataTable.no-footer {
+    border-bottom: 1px solid var(--glass-border);
+}
+
+/* Responsive Case Reporting Map for Mobile Field Workers */
+#reportMiniMap {
+    height: 50vh !important;
+    min-height: 350px !important;
+    max-height: 600px !important;
+    transition: all 0.3s ease;
+    width: 100% !important;
+}
+
+@media (max-width: 768px) {
+    #reportMiniMap {
+        height: 55vh !important;
+        min-height: 300px !important;
+    }
+}
+
+/* Ensure Mapbox search suggestions appear above all overlays */
+.leaflet-control-geocoder-alternatives {
+    z-index: 10500 !important;
+}

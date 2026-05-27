@@ -1,0 +1,75 @@
+<!-- Report Case Modal -->
+<div class="modal fade" id="reportCaseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title fw-bold"><i class="bi bi-file-earmark-medical me-2"></i> Report New Case</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 bg-light">
+                <form id="reportCaseForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-secondary">Disease Type</label>
+                            <input type="text" class="form-control" id="reportDisease" list="diseaseOptions" placeholder="Type or select disease" required autoComplete="off">
+                            <datalist id="diseaseOptions">
+                                {% for d in diseases %}
+                                    <option value="{{ d }}">{{ d|title }}</option>
+                                {% empty %}
+                                    <option value="cholera">Cholera</option>
+                                    <option value="tb">Tuberculosis (TB)</option>
+                                    <option value="hiv">HIV/AIDS</option>
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-secondary">Variant / Strain (Optional)</label>
+                            <input type="text" class="form-control" id="reportVariant" placeholder="e.g. O1 Ogawa, MDR-TB">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-secondary">Age</label>
+                            <input type="number" class="form-control" id="reportAge" placeholder="Years">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-secondary">Gender</label>
+                            <select class="form-select" id="reportGender">
+                                <option value="U">Select</option>
+                                <option value="M">Male</option>
+                                <option value="F">Female</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-secondary">Date of Onset</label>
+                            <input type="date" class="form-control" id="reportDate" required>
+                        </div>
+
+                        <div class="col-12 mt-4">
+                            <h6 class="fw-bold border-bottom pb-2">Location Detail</h6>
+                            <label class="form-label small fw-bold text-secondary">Location Search</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                                <input type="text" class="form-control" id="reportLocationSearch" placeholder="Type an address or town (e.g., Kuwadzana)...">
+                                <button type="button" class="btn btn-outline-primary" id="btnGeocode">Locate on Map</button>
+                            </div>
+                            <small class="text-muted d-block mt-1">We will automatically translate this to GPS coordinates.</small>
+                        </div>
+                        
+                        <!-- Mini Map snippet for confirming location -->
+                        <div class="col-12 mt-3">
+                            <div id="reportMiniMap" style="height: 200px; width: 100%; border-radius: 8px;" class="border shadow-sm"></div>
+                            <input type="hidden" id="reportLat">
+                            <input type="hidden" id="reportLng">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer bg-white rounded-bottom-4">
+                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary rounded-pill px-4" id="btnSubmitReport">
+                    <span id="reportSpinner" class="spinner-border spinner-border-sm d-none me-2"></span> Save Case
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

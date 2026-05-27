@@ -1,0 +1,686 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    
+    <!-- Header & Navigation -->
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+        <h2 class="fw-bold m-0"><i class="bi bi-briefcase-fill text-primary me-2"></i> Case Management</h2>
+        
+        <div class="d-flex gap-2">
+            {% if user.is_superuser %}
+            <a href="{% url 'dashboard_root' %}" class="btn btn-dark rounded-pill shadow-sm fw-bold">
+                <i class="bi bi-house-door-fill me-2"></i> Return to Map
+            </a>
+            {% endif %}
+            
+            <form action="{% url 'logout' %}" method="post" class="m-0">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger rounded-pill shadow-sm fw-bold">
+                    <i class="bi bi-box-arrow-right me-2"></i> Log Out
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Feedback Messages -->
+    {% if messages %}
+    <div class="mb-4">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow-sm" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Tabs Layout -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-header bg-white pt-3 px-4 border-bottom-0 pb-0">
+            <ul class="nav nav-tabs border-bottom fw-medium" id="caseTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active py-3" id="add-case-tab" data-bs-toggle="tab" data-bs-target="#add-case-pane" type="button" role="tab">
+                        <i class="bi bi-plus-circle-fill text-success me-2"></i> Add New Case
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link py-3" id="my-cases-tab" data-bs-toggle="tab" data-bs-target="#my-cases-pane" type="button" role="tab">
+                        <i class="bi bi-person-lines-fill text-primary me-2"></i> My Reported Cases 
+                        <span class="badge bg-primary rounded-pill ms-1">{{ user_cases.count }}</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link py-3" id="all-cases-tab" data-bs-toggle="tab" data-bs-target="#all-cases-pane" type="button" role="tab">
+                        <i class="bi bi-globe-americas text-secondary me-2"></i> Global Database 
+                        <span class="badge bg-secondary rounded-pill ms-1">{{ total_db_cases }}</span>
+                    </button>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="card-body p-0">
+            <div class="tab-content" id="caseTabsContent">
+                
+                <!-- Tab 1: ADD NEW CASE -->
+                <div class="tab-pane fade show active p-4 bg-light" id="add-case-pane" role="tabpanel" tabindex="0">
+                    <div class="row justify-content-center">
+                        <div class="col-md-10">
+                            <h4 class="mb-4 fw-bold"><i class="bi bi-search text-muted me-2"></i> Geocode & Report New Case</h4>
+                            
+                            <form id="reportCaseForm" class="bg-white p-4 rounded-4 shadow-sm border">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-secondary">Disease Type</label>
+                                        <input type="text" class="form-control" id="reportDisease" list="diseaseOptions" placeholder="Type or select disease" required autoComplete="off">
+                                        <datalist id="diseaseOptions">
+                                            {% for d in diseases %}
+                                                <option value="{{ d }}">{{ d|title }}</option>
+                                            {% empty %}
+                                                <option value="cholera">Cholera</option>
+                                                <option value="tb">Tuberculosis (TB)</option>
+                                                <option value="hiv">HIV/AIDS</option>
+                                            {% endfor %}
+                                        </datalist>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-secondary">Variant / Strain (Optional)</label>
+                                        <input type="text" class="form-control" id="reportVariant" placeholder="e.g. O1 Ogawa, MDR-TB">
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold text-secondary">Age</label>
+                                        <input type="number" class="form-control" id="reportAge" placeholder="Years">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold text-secondary">Gender</label>
+                                        <select class="form-select" id="reportGender">
+                                            <option value="U">Select</option>
+                                            <option value="M">Male</option>
+                                            <option value="F">Female</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold text-secondary">Date of Onset</label>
+                                        <input type="date" class="form-control" id="reportDate" required>
+                                    </div>
+                                    <div class="col-md-6 mt-3">
+                                        <label class="form-label small fw-bold text-secondary">Severity</label>
+                                        <select class="form-select" id="reportSeverity">
+                                            <option value="1">Suspected</option>
+                                            <option value="2">Probable</option>
+                                            <option value="3" selected>Confirmed</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mt-3">
+                                        <label class="form-label small fw-bold text-secondary">Outcome</label>
+                                        <select class="form-select" id="reportOutcome">
+                                            <option value="active" selected>Active / Treatment</option>
+                                            <option value="recovered">Recovered</option>
+                                            <option value="deceased">Deceased</option>
+                                            <option value="referred">Referred Out</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-12 mt-4">
+                                        <h6 class="fw-bold border-bottom pb-2">Location Mapping</h6>
+                                        <label class="form-label small fw-bold text-secondary">Reporting Health Facility</label>
+                                        <select class="form-select custom-select2" id="reportFacility" required>
+                                            <option value="">Select or type a facility name...</option>
+                                            {% for f in facilities %}
+                                            <option value="{{ f.id }}" data-lat="{{ f.location.y }}" data-lng="{{ f.location.x }}">{{ f.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <input type="hidden" id="new_facility_lat">
+                                        <input type="hidden" id="new_facility_lng">
+                                    </div>
+                                    <div class="col-12 mt-3">
+                                        <label class="form-label small fw-bold text-secondary">Patient Residence / Origin Address</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                                            <input type="text" class="form-control" id="reportLocationSearch" placeholder="Type an address or town (e.g., Kuwadzana)...">
+                                            <button type="button" class="btn btn-outline-primary fw-bold" id="btnGeocode">Locate Coordinates</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Mini Map snippet for confirming location -->
+                                    <div class="col-12 mt-3">
+                                        <div class="d-flex justify-content-between align-items-end mb-2">
+                                            <label class="form-label small fw-bold text-secondary m-0">Confirm Residence Rooftop</label>
+                                            <button type="button" class="btn btn-sm btn-outline-danger fw-bold" id="btnPinpointMe">
+                                                <i class="bi bi-geo-alt-fill"></i> Pinpoint My Location
+                                            </button>
+                                        </div>
+                                        <div id="reportMiniMap" style="height: 350px; width: 100%; border-radius: 8px; z-index: 1;" class="border shadow-sm"></div>
+                                        <input type="hidden" id="reportLat">
+                                        <input type="hidden" id="reportLng">
+                                        <input type="hidden" id="reportPlusCode">
+                                        <input type="hidden" id="reportW3W">
+                                    </div>
+                                    
+                                    <div class="col-12 mt-4 text-end">
+                                        <button type="button" class="btn btn-success rounded-pill px-5 py-2 fw-bold shadow" id="btnSubmitReport">
+                                            <span id="reportSpinner" class="spinner-border spinner-border-sm d-none me-2"></span> Save Case to Database
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: MY CASES -->
+                <div class="tab-pane fade" id="my-cases-pane" role="tabpanel" tabindex="0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light text-muted small">
+                                <tr>
+                                    <th class="ps-4">ID / PATIENT ID</th>
+                                    <th>DISEASE</th>
+                                    <th>VARIANT</th>
+                                    <th>FACILITY</th>
+                                    <th>ONSET DATE</th>
+                                    <th>GENDER / AGE</th>
+                                    <th class="text-end pe-4">ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in user_cases %}
+                                <tr>
+                                    <td class="ps-4 fw-medium text-secondary">{{ c.patient_id|stringformat:"s"|slice:":8" }}...</td>
+                                    <td><span class="badge bg-primary">{{ c.get_disease_type_display }}</span></td>
+                                    <td>{{ c.variant|default:"-" }}</td>
+                                    <td>{{ c.facility.name|default:"-" }}</td>
+                                    <td>{{ c.date_of_onset|date:"M d, Y"|default:"-" }}</td>
+                                    <td>{{ c.gender }} / {{ c.age|default:"-" }}</td>
+                                    <td class="text-end pe-4">
+                                        <a href="{% url 'edit_case' c.disease_type c.id %}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                                            <i class="bi bi-pencil-square"></i> Edit
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-5 text-muted">
+                                        <i class="bi bi-inbox fs-1 d-block mb-3 opacity-50"></i>
+                                        You haven't reported any cases yet.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab 3: GLOBAL OVERVIEW -->
+                <div class="tab-pane fade" id="all-cases-pane" role="tabpanel" tabindex="0">
+                    <div class="p-4 bg-light text-muted small border-bottom">
+                        <i class="bi bi-info-circle-fill me-1"></i> Showing the 100 most recent cases out of {{ total_db_cases }} total records in the database.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped align-middle mb-0">
+                            <thead class="table-dark small">
+                                <tr>
+                                    <th class="ps-4">DISEASE</th>
+                                    <th>FACILITY</th>
+                                    <th>REPORTED DATE</th>
+                                    <th>PATIENT ID</th>
+                                    <th>STATUS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in all_cases %}
+                                <tr>
+                                    <td class="ps-4 fw-medium">{{ c.get_disease_type_display }}</td>
+                                    <td>{{ c.facility.name|default:"-" }}</td>
+                                    <td>{{ c.date_reported|date:"M d, Y" }}</td>
+                                    <td class="text-muted" style="font-family: monospace;">{{ c.patient_id }}</td>
+                                    <td><span class="badge bg-secondary">{{ c.get_outcome_display }}</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_head %}
+    <!-- Ensure Referer is sent to prevent OSM Tile blocking on Localhost -->
+    <meta name="referrer" content="no-referrer-when-downgrade">
+
+    <!-- Include MapLibre GL JS since we need the mini map for reporting case -->
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    
+    <!-- Open Location Code (Plus Codes) -->
+    <script src="https://unpkg.com/open-location-code@1.0.3/open-location-code.js"></script>
+    
+    <!-- jQuery and Select2 -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    
+    <!-- jQuery UI for Advanced Autocomplete Search -->
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+    <style>
+        .ui-autocomplete {
+            max-height: 200px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            z-index: 1050;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 4px;
+        }
+    </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Geocoding and MapLibre map for adding cases
+    let reportMap, patientMarker, facilityMarker;
+    
+    const esriImageryStyle = {
+        "version": 8,
+        "sources": {
+            "esri-satellite": {
+                "type": "raster",
+                "tiles": ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+                "tileSize": 256,
+                "maxzoom": 18
+            },
+            "osm-labels": {
+                "type": "raster",
+                "tiles": [
+                    "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                ],
+                "tileSize": 256,
+                "maxzoom": 19
+            }
+        },
+        "layers": [
+            {
+                "id": "esri-satellite-layer",
+                "type": "raster",
+                "source": "esri-satellite",
+                "minzoom": 0,
+                "maxzoom": 22
+            },
+            {
+                "id": "osm-labels-layer",
+                "type": "raster",
+                "source": "osm-labels",
+                "paint": {"raster-opacity": 0.4},
+                "minzoom": 0,
+                "maxzoom": 22
+            }
+        ]
+    };
+
+    function initMap() {
+        if (!reportMap) {
+            reportMap = new maplibregl.Map({
+                container: 'reportMiniMap',
+                style: esriImageryStyle,
+                center: [29.155, -19.015],
+                zoom: 6
+            });
+            reportMap.addControl(new maplibregl.NavigationControl());
+
+            reportMap.on('click', function(e) {
+                placePatientMarker(e.lngLat);
+            });
+        }
+    }
+
+    // We only need to initialize the map once the tab is actually shown to prevent sizing glitches
+    document.getElementById('add-case-tab').addEventListener('shown.bs.tab', function () {
+        initMap();
+        setTimeout(() => { reportMap.resize(); }, 200);
+    });
+
+    // Handle initial load if the first tab is already active
+    document.addEventListener("DOMContentLoaded", function() {
+        initMap();
+    });
+
+    function placePatientMarker(lngLat) {
+        if (patientMarker) patientMarker.remove();
+        
+        const el = document.createElement('div');
+        el.className = 'custom-div-icon';
+        el.style.backgroundColor = '#dc3545';
+        el.style.width = '14px';
+        el.style.height = '14px';
+        el.style.borderRadius = '50%';
+        el.style.border = '2px solid white';
+        el.style.boxShadow = '0 0 4px rgba(0,0,0,0.5)';
+        el.style.cursor = 'pointer';
+        
+        patientMarker = new maplibregl.Marker({element: el, draggable: true})
+            .setLngLat(lngLat)
+            .addTo(reportMap);
+            
+        // Setup dragged event
+        patientMarker.on('dragend', () => {
+            const newLngLat = patientMarker.getLngLat();
+            updateCoordsFields(newLngLat);
+            resolveLocationDetails(newLngLat);
+        });
+        
+        updateCoordsFields(lngLat);
+        resolveLocationDetails(lngLat);
+    }
+    
+    function updateCoordsFields(lngLat) {
+        document.getElementById('reportLat').value = lngLat.lat.toFixed(6);
+        document.getElementById('reportLng').value = lngLat.lng.toFixed(6);
+    }
+
+    async function resolveLocationDetails(lngLat) {
+        // 1. Generate Plus Code
+        const plusCode = OpenLocationCode.encode(lngLat.lat, lngLat.lng, 11);
+        
+        // 2. Fetch Reverse Geocode from Nominatim
+        let nearestLandmark = "Unknown Area";
+        try {
+            const nomRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lngLat.lat}&lon=${lngLat.lng}&zoom=18`);
+            const nomData = await nomRes.json();
+            if (nomData && nomData.address) {
+                const ad = nomData.address;
+                nearestLandmark = ad.amenity || ad.road || ad.village || ad.hamlet || ad.suburb || ad.city || "Unnamed area";
+            }
+        } catch (e) {
+            console.error("Reverse geocoding failed", e);
+        }
+        
+        // 3. Fetch what3words
+        let w3wAddress = "///pending.api.key";
+        const YOUR_W3W_API_KEY = "YOUR_W3W_API_KEY"; // Placeholder
+        if (YOUR_W3W_API_KEY !== "YOUR_W3W_API_KEY") {
+            try {
+                const w3wRes = await fetch(`https://api.what3words.com/v3/convert-to-3wa?coordinates=${lngLat.lat},${lngLat.lng}&key=${YOUR_W3W_API_KEY}`);
+                const w3wData = await w3wRes.json();
+                if (w3wData && w3wData.words) {
+                    w3wAddress = "///" + w3wData.words;
+                }
+            } catch (e) {
+                console.error("w3w failed", e);
+            }
+        }
+        
+        // Setup Popup HTML
+        const popupContent = `
+            <div style="font-family: Inter, sans-serif; font-size: 13px; line-height: 1.5; min-width: 160px;">
+                <strong style="color: #dc3545; border-bottom: 1px solid #eee; display: block; padding-bottom: 4px; margin-bottom: 6px;">Residence Location</strong>
+                <div><strong>Coordinates:</strong> ${lngLat.lat.toFixed(6)}, ${lngLat.lng.toFixed(6)}</div>
+                <div><strong>Plus Code:</strong> ${plusCode}</div>
+                <div><strong>Near:</strong> ${nearestLandmark}</div>
+                <div><strong>w3w:</strong> ${w3wAddress}</div>
+            </div>
+        `;
+        
+        if (patientMarker) {
+            if (!patientMarker.getPopup()) {
+                patientMarker.setPopup(new maplibregl.Popup({ offset: 15 }));
+            }
+            patientMarker.getPopup().setHTML(popupContent);
+            if (!patientMarker.getPopup().isOpen()) {
+                patientMarker.togglePopup();
+            }
+        }
+        
+        // Populate hidden inputs if added
+        const hiddenPlusCode = document.getElementById('reportPlusCode');
+        if(hiddenPlusCode) hiddenPlusCode.value = plusCode;
+        
+        const hiddenW3W = document.getElementById('reportW3W');
+        if(hiddenW3W) hiddenW3W.value = w3wAddress;
+    }
+    
+    function placeFacilityMarker(lngLat, name) {
+        if (facilityMarker) facilityMarker.remove();
+        
+        const el = document.createElement('div');
+        el.className = 'custom-div-icon';
+        el.style.backgroundColor = '#0d6efd';
+        el.style.width = '14px';
+        el.style.height = '14px';
+        el.style.borderRadius = '50%';
+        el.style.border = '2px solid white';
+        el.style.boxShadow = '0 0 4px rgba(0,0,0,0.5)';
+        
+        facilityMarker = new maplibregl.Marker({element: el})
+            .setLngLat(lngLat)
+            .setPopup(new maplibregl.Popup({ offset: 25 }).setText("Facility: " + name))
+            .addTo(reportMap);
+    }
+
+    // Advanced Google-Maps-Like Autocomplete Search using Mapbox
+    const mapboxToken = 'pk.eyJ1IjoibGVlcm95bTkiLCJhIjoiY21vYTZjaGx4MDQ5djJzcXl0bGpxbGRwaSJ9.pgjKuxq6py5bUrTv_E9M8Q';
+    $("#reportLocationSearch").autocomplete({
+        source: function(request, response) {
+            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(request.term)}.json?access_token=${mapboxToken}&country=zw&autocomplete=true&limit=5`;
+            $.ajax({
+                url: url,
+                dataType: "json",
+                success: function(data) {
+                    if (data.features) {
+                        response($.map(data.features, function(item) {
+                            return {
+                                label: item.place_name,
+                                value: item.place_name,
+                                center: item.center // [lng, lat]
+                            }
+                        }));
+                    } else {
+                        response([]);
+                    }
+                }
+            });
+        },
+        minLength: 3,
+        select: function(event, ui) {
+            if (ui.item && ui.item.center) {
+                const lngLat = { lat: ui.item.center[1], lng: ui.item.center[0] };
+                reportMap.flyTo({center: [lngLat.lng, lngLat.lat], zoom: 16});
+                placePatientMarker(lngLat);
+            }
+        }
+    });
+
+    // Fallback for manual button click
+    document.getElementById('btnGeocode').addEventListener('click', function() {
+        const query = document.getElementById('reportLocationSearch').value;
+        if (!query) return;
+        
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxToken}&country=zw&limit=1`;
+        
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                if (data.features && data.features.length > 0) {
+                    const feature = data.features[0];
+                    const lngLat = { lat: feature.center[1], lng: feature.center[0] };
+                    reportMap.flyTo({center: [lngLat.lng, lngLat.lat], zoom: 16});
+                    placePatientMarker(lngLat);
+                } else {
+                    alert('Location not found in Zimbabwe. Please click on the map manually.');
+                }
+            });
+    });
+
+    // GPS Pinpoint Logic
+    document.getElementById('btnPinpointMe').addEventListener('click', function() {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            return;
+        }
+        
+        const btn = this;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Locating...';
+        btn.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lngLat = { 
+                    lng: position.coords.longitude, 
+                    lat: position.coords.latitude 
+                };
+                reportMap.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 18 });
+                placePatientMarker(lngLat);
+                
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            },
+            (error) => {
+                alert('Unable to retrieve your location: ' + error.message);
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    });
+
+    // Handle Facility Selection Map Zooming
+    $(document).ready(function() {
+        if ($.fn.select2) {
+            $('#reportFacility').select2({ 
+                theme: 'bootstrap-5', 
+                width: '100%',
+                tags: true 
+            });
+        }
+    });
+
+    $('#reportFacility').on('change', function() {
+        const option = $(this).find(':selected');
+        const lat = option.attr('data-lat');
+        const lng = option.attr('data-lng');
+        const name = option.text();
+        
+        if (lat && lng) {
+            const lngLat = { lat: parseFloat(lat), lng: parseFloat(lng) };
+            if (reportMap) {
+                reportMap.flyTo({center: [lngLat.lng, lngLat.lat], zoom: 10});
+                placeFacilityMarker(lngLat, name);
+            }
+            $('#new_facility_lat').val('');
+            $('#new_facility_lng').val('');
+        } else {
+            if (name) {
+                // Dynamically fetch coordinates for custom tag facility using Mapbox
+                const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(name)}.json?access_token=${mapboxToken}&country=zw&limit=1`;
+                fetch(url).then(r => r.json()).then(data => {
+                    if (data.features && data.features.length > 0) {
+                        const feature = data.features[0];
+                        const lngLat = { lat: feature.center[1], lng: feature.center[0] };
+                        if (reportMap) reportMap.flyTo({center: [lngLat.lng, lngLat.lat], zoom: 14});
+                        placeFacilityMarker(lngLat, name);
+                        $('#new_facility_lat').val(lngLat.lat);
+                        $('#new_facility_lng').val(lngLat.lng);
+                    } else {
+                        alert('Custom facility "' + name + '" not found in Zimbabwe automatically. Form requires valid coordinates if submitting an unlisted clinic.');
+                        if (facilityMarker && reportMap) {
+                            facilityMarker.remove();
+                            facilityMarker = null;
+                        }
+                        $('#new_facility_lat').val('');
+                        $('#new_facility_lng').val('');
+                    }
+                });
+            } else {
+                if (facilityMarker && reportMap) {
+                    facilityMarker.remove();
+                    facilityMarker = null;
+                }
+            }
+        }
+    });
+
+    // Submit Report
+    document.getElementById('btnSubmitReport').addEventListener('click', function() {
+        const disease = document.getElementById('reportDisease').value;
+        const lat = document.getElementById('reportLat').value;
+        const lng = document.getElementById('reportLng').value;
+        const facilityId = document.getElementById('reportFacility').value;
+        const locationName = document.getElementById('reportLocationSearch').value;
+        
+        if (!disease || !lat || !lng || !facilityId) {
+            alert('Please select a disease, a reporting facility, and click the map to set the Patient Residence coordinates.');
+            return;
+        }
+        
+        if (!patientMarker || !facilityMarker) {
+            alert('Both the patient origin (red) and the facility (blue) must be visually marked on the map before saving.');
+            return;
+        }
+
+        const payload = {
+            facility_id: facilityId,
+            new_facility_lat: document.getElementById('new_facility_lat').value,
+            new_facility_lng: document.getElementById('new_facility_lng').value,
+            disease_type: disease,
+            variant: document.getElementById('reportVariant').value,
+            age: document.getElementById('reportAge').value,
+            gender: document.getElementById('reportGender').value,
+            date_of_onset: document.getElementById('reportDate').value,
+            severity: parseInt(document.getElementById('reportSeverity').value),
+            outcome: document.getElementById('reportOutcome').value,
+            location_name: locationName || 'Manual Pin',
+            lat: lat,
+            lon: lng
+        };
+
+        const btn = this;
+        document.getElementById('reportSpinner').classList.remove('d-none');
+        btn.disabled = true;
+        
+        fetch('/api/report/', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]') ? document.querySelector('[name=csrfmiddlewaretoken]').value : ''
+            },
+            body: JSON.stringify(payload)
+        }).then(res => {
+            if (res.redirected && res.url.includes('login')) {
+                throw new Error('Session expired or authentication lost. Please log in again.');
+            }
+            if (!res.ok && res.status !== 400) {
+                return res.text().then(text => { throw new Error('Server error: ' + res.status + ' - ' + text.substring(0, 100)); });
+            }
+            // Check if response is actually JSON before parsing to avoid bare SyntaxError
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                return res.json();
+            } else {
+                return res.text().then(text => { throw new Error('Expected JSON response but got: ' + text.substring(0, 100)); });
+            }
+        }).then(data => {
+            if (data.status === 'success') {
+                alert('Case Reported Successfully!');
+                location.reload(); // Reload to show new case in the lists
+            } else {
+                alert('Error: ' + data.message);
+            }
+        }).catch(err => alert('Error: ' + err.message))
+        .finally(() => {
+            document.getElementById('reportSpinner').classList.add('d-none');
+            btn.disabled = false;
+        });
+    });
+</script>
+{% endblock %}
