@@ -13,11 +13,12 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 import dj_database_url
 
-GDAL_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\gdal312.dll"
-GEOS_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\geos_c.dll"
-
-os.environ['PROJ_LIB'] = r'C:\Users\user\AppData\Local\Programs\OSGeo4W\share\proj'
-os.environ['GDAL_DATA'] = r'C:\Users\user\AppData\Local\Programs\OSGeo4W\share\gdal'
+# Only use Windows OSGeo4W paths if running on local Windows machine
+if os.name == 'nt':
+    GDAL_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\gdal312.dll"
+    GEOS_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\geos_c.dll"
+    os.environ['PROJ_LIB'] = r'C:\Users\user\AppData\Local\Programs\OSGeo4W\share\proj'
+    os.environ['GDAL_DATA'] = r'C:\Users\user\AppData\Local\Programs\OSGeo4W\share\gdal'
 
 
 from pathlib import Path
