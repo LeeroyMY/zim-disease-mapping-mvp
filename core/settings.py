@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 import os
+import dj_database_url
 
 GDAL_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\gdal312.dll"
 GEOS_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\geos_c.dll"
@@ -29,10 +30,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-o4ep00l^9d+m0dpl#j8wf584w0mcxey(grjl)vmq*m)4vp$pbc"
+SECRET_KEY = os.environ.get('SECRET_KEY', "django-insecure-o4ep00l^9d+m0dpl#j8wf584w0mcxey(grjl)vmq*m)4vp$pbc")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
 
@@ -64,6 +65,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -96,14 +98,10 @@ WSGI_APPLICATION = "core.wsgi.application"
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.contrib.gis.db.backends.postgis', # Important: Use the PostGIS engine
-        'NAME': 'zim_disease_db',
-        'USER': 'postgres',        # My PostgreSQL username 
-        'PASSWORD': 'Maturure00398@', # My PostgreSQL password
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
+    'default': dj_database_url.config(
+        default='postgis://postgres:Maturure00398@@localhost:5432/zim_disease_db',
+        engine='django.contrib.gis.db.backends.postgis'
+    )
 }
 
 
