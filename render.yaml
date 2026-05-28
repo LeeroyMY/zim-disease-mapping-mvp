@@ -2,6 +2,7 @@ services:
   - type: web
     name: infectious-diseases-mapping
     env: python
+    plan: free
     buildCommand: "./render_build.sh"
     startCommand: "gunicorn core.wsgi:application"
     envVars:
