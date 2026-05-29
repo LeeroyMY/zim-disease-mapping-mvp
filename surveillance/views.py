@@ -31,7 +31,7 @@ from django.contrib.gis.db.models.functions import Distance
 
 from .models import BaseDiseaseCase, AdministrativeBoundary, HealthFacility
 from .serializers import AdministrativeBoundarySerializer, HealthFacilitySerializer
-from .utils import get_or_create_dynamic_model
+from .utils import get_or_create_dynamic_model, get_geomasking_radii, apply_donut_geomasking
 
 def _get_all_disease_models():
     """Returns all models that inherit from BaseDiseaseCase."""
@@ -52,6 +52,10 @@ def get_all_cases(request):
         
         # Manually serialize since dynamic models don't have predefined DRF serializers
         for case in cases:
+            # Clinical Guardrail: Block HIV cases completely from the map point feed
+            if case.disease_type.lower() == 'hiv':
+                continue
+                
             # Get all fields dynamically to include extra columns
             properties = {}
             for field in case._meta.fields:
@@ -73,11 +77,17 @@ def get_all_cases(request):
             properties['id'] = case.id
             
             if case.location:
+                # Apply Donut Geomasking
+                r_min, r_max = get_geomasking_radii(case)
+                masked_lon, masked_lat = apply_donut_geomasking(
+                    case.location.x, case.location.y, r_min, r_max, seed_val=case.patient_id
+                )
+                
                 features.append({
                     "type": "Feature",
                     "geometry": {
                         "type": "Point",
-                        "coordinates": [case.location.x, case.location.y]
+                        "coordinates": [masked_lon, masked_lat]
                     },
                     "properties": properties
                 })
@@ -165,6 +175,10 @@ def get_latest_cases(request):
                 pass
                 
         for case in cases:
+            # Clinical Guardrail: Block HIV cases completely from the map point feed
+            if case.disease_type.lower() == 'hiv':
+                continue
+                
             properties = {}
             for field in case._meta.fields:
                 if field.name not in ['location', 'patient_id', 'facility', 'reported_by', 'extra_data']:
@@ -183,11 +197,17 @@ def get_latest_cases(request):
             properties['id'] = case.id
             
             if case.location:
+                # Apply Donut Geomasking
+                r_min, r_max = get_geomasking_radii(case)
+                masked_lon, masked_lat = apply_donut_geomasking(
+                    case.location.x, case.location.y, r_min, r_max, seed_val=case.patient_id
+                )
+                
                 features.append({
                     "type": "Feature",
                     "geometry": {
                         "type": "Point",
-                        "coordinates": [case.location.x, case.location.y]
+                        "coordinates": [masked_lon, masked_lat]
                     },
                     "properties": properties
                 })
