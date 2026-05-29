@@ -1929,18 +1929,11 @@ function calculateLinearRegression(x, y) {
     return { slope, intercept };
 }
 
-function calculateMovingAverage(data, windowSize) {
-    let result = [];
-    for (let i = 0; i < data.length; i++) {
-        if (i < windowSize - 1) {
-            result.push(null);
-            continue;
-        }
-        let sum = 0;
-        for (let j = 0; j < windowSize; j++) {
-            sum += data[i - j];
-        }
-        result.push(sum / windowSize);
+function calculateEMA(data, alpha) {
+    if (data.length === 0) return [];
+    let result = [data[0]];
+    for (let i = 1; i < data.length; i++) {
+        result.push((data[i] * alpha) + (result[i - 1] * (1 - alpha)));
     }
     return result;
 }
@@ -1973,7 +1966,7 @@ function updateTrendAnalysis() {
     let xValues = Array.from({length: sortedKeys.length}, (_, i) => i);
     let yValues = sortedKeys.map(k => weeklyCounts[k]);
     
-    // Drop the current calendar week to avoid skewing trend downward due to incomplete data
+    // Detect active week
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentStart = new Date(currentYear, 0, 1);
@@ -1981,36 +1974,34 @@ function updateTrendAnalysis() {
     const currentWeek = Math.floor(currentDiff / (1000 * 60 * 60 * 24 * 7));
     const currentWeekKey = `${currentYear}-W${currentWeek.toString().padStart(2, '0')}`;
     
+    let hasIncompleteWeek = false;
     if (sortedKeys.length > 0 && sortedKeys[sortedKeys.length - 1] === currentWeekKey) {
-        sortedKeys.pop();
-        xValues.pop();
-        yValues.pop();
+        hasIncompleteWeek = true;
     }
     
     if (xValues.length < 2) {
-        document.getElementById('trend-summary-text').innerText = "Need at least two completed weeks of data for linear regression trend analysis.";
+        document.getElementById('trend-summary-text').innerText = "Need at least two weeks of data for trend analysis.";
         if (trendAnalysisChart) trendAnalysisChart.destroy();
         return;
     }
     
-    const maLine = calculateMovingAverage(yValues, 3); // 3-week moving average
+    const emaLine = calculateEMA(yValues, 0.4); 
     
-    // Shorten the Trend Window to the last 4 weeks for acute regression
-    const WINDOW_SIZE = 4;
-    const trendX = xValues.slice(-WINDOW_SIZE);
-    const trendY = yValues.slice(-WINDOW_SIZE);
+    // OLS on EMA (exclude active week if present)
+    const olsLength = hasIncompleteWeek ? xValues.length - 1 : xValues.length;
+    const olsX = xValues.slice(0, olsLength);
+    const olsY = emaLine.slice(0, olsLength);
     
     let regLine = new Array(xValues.length).fill(null);
     let trendDirection = "stable";
     let slopeVal = 0;
     
-    if (trendX.length >= 2) {
-        const reg = calculateLinearRegression(trendX, trendY);
+    if (olsX.length >= 2) {
+        const reg = calculateLinearRegression(olsX, olsY);
         slopeVal = reg.slope;
         
-        // Draw trendline only for the window
-        const startIdx = Math.max(0, xValues.length - WINDOW_SIZE);
-        for(let i = startIdx; i < xValues.length; i++) {
+        // Draw trendline for all xValues
+        for(let i = 0; i < xValues.length; i++) {
             regLine[i] = reg.slope * xValues[i] + reg.intercept;
         }
         trendDirection = reg.slope > 0 ? "increasing" : "decreasing";
@@ -2021,54 +2012,84 @@ function updateTrendAnalysis() {
             ${slopeVal > 0 ? '<i class="bi bi-graph-up-arrow"></i>' : '<i class="bi bi-graph-down-arrow"></i>'}
             Recent ${trendDirection} trend
         </span> 
-        (avg change of ${Math.abs(slopeVal).toFixed(1)} cases/week).
+        (avg change of ${Math.abs(slopeVal).toFixed(2)} cases/week).
     `;
     
     const ctx = document.getElementById('trendChart').getContext('2d');
     if (trendAnalysisChart) trendAnalysisChart.destroy();
     
+    const barBackgroundColors = yValues.map((_, i) => (i === yValues.length - 1 && hasIncompleteWeek) ? '#fae8e4' : '#e2e8f0');
+    const borderColors = yValues.map((_, i) => (i === yValues.length - 1 && hasIncompleteWeek) ? '#e6b8af' : '#64748b');
+
+    let datasets = [
+        {
+            type: 'bar',
+            label: 'Raw weekly cases Y_t',
+            data: yValues,
+            backgroundColor: barBackgroundColors,
+            borderColor: borderColors,
+            borderWidth: 1
+        },
+        {
+            type: 'line',
+            label: '4-period EMA (α = 0.4)',
+            data: emaLine,
+            borderColor: '#008080',
+            borderWidth: 2,
+            pointRadius: 4,
+            pointBackgroundColor: '#008080',
+            fill: false,
+            tension: 0.3
+        },
+        {
+            type: 'line',
+            label: `OLS trend on EMA (slope m = ${slopeVal > 0 ? '+' : ''}${slopeVal.toFixed(2)}, active week truncated)`,
+            data: regLine,
+            borderColor: '#c2410c',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            pointRadius: 0,
+            fill: false
+        }
+    ];
+
+    if (hasIncompleteWeek) {
+        datasets.unshift({
+            type: 'bar',
+            label: 'Active (incomplete) epi-week — excluded from OLS',
+            data: [], // empty, just for legend
+            backgroundColor: '#fae8e4',
+            borderColor: '#fae8e4',
+            borderWidth: 1
+        });
+    }
+
     trendAnalysisChart = new Chart(ctx, {
-        type: 'line',
         data: {
-            labels: sortedKeys,
-            datasets: [
-                {
-                    label: 'Raw Cases',
-                    data: yValues,
-                    borderColor: '#cbd5e1',
-                    borderWidth: 1,
-                    pointRadius: 2,
-                    pointBackgroundColor: '#64748b',
-                    fill: false,
-                    tension: 0.1
-                },
-                {
-                    label: '3-Week Moving Avg',
-                    data: maLine,
-                    borderColor: '#3b82f6',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    fill: false,
-                    tension: 0.3
-                },
-                {
-                    label: 'Recent Trendline',
-                    data: regLine,
-                    borderColor: slopeVal > 0 ? '#ef4444' : '#10b981',
-                    borderWidth: 3,
-                    borderDash: [5, 5],
-                    pointRadius: 0,
-                    fill: false
-                }
-            ]
+            labels: sortedKeys.map(k => k.split('-W')[1]),
+            datasets: datasets
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: {size: 10} } } },
+            plugins: { 
+                legend: { 
+                    position: 'top', 
+                    labels: { boxWidth: 12, font: {size: 10} } 
+                } 
+            },
             scales: {
-                x: { ticks: { font: { size: 9 }, maxTicksLimit: 10 } },
-                y: { beginAtZero: true, ticks: { font: { size: 10 } } }
+                x: { 
+                    title: { display: true, text: 'ISO-8601 epidemiological week', font: {size: 10} },
+                    ticks: { font: { size: 9 }, maxTicksLimit: 25 },
+                    grid: { drawOnChartArea: true, color: '#f1f5f9', borderDash: [2, 2] }
+                },
+                y: { 
+                    title: { display: true, text: 'Reported case count', font: {size: 10} },
+                    beginAtZero: true, 
+                    ticks: { font: { size: 10 } },
+                    grid: { drawOnChartArea: true, color: '#f1f5f9', borderDash: [2, 2] }
+                }
             }
         }
     });
