@@ -616,7 +616,21 @@ function renderCases() {
 
     // Refresh spatial query if active
     if (spatialQueryEnabled && spatialQueryMarker) {
-        handleSpatialQuery(spatialQueryMarker.getLatLng());
+        const radiusKm = parseFloat(document.getElementById('query-radius').value);
+        const count = activeFeatures.length;
+        let diseaseCounts = {};
+        activeFeatures.forEach(f => {
+            const d = f.properties.disease_type;
+            diseaseCounts[d] = (diseaseCounts[d] || 0) + 1;
+        });
+        
+        let summaryHtml = `<div class="mb-2 fw-bold text-danger border-bottom pb-1">Radius Search: ${radiusKm}km</div>`;
+        summaryHtml += `<div class="mb-2"><strong>Total Cases: </strong> ${count}</div>`;
+        for (let [d, c] of Object.entries(diseaseCounts)) {
+            summaryHtml += `<div class="mb-1"><span class="badge" style="background-color:${getColorForCase(d)}">${d.toUpperCase()}</span> : ${c}</div>`;
+        }
+        
+        spatialQueryMarker.setPopupContent(summaryHtml);
     }
 
     updateDatasetTable(activeFeatures);
@@ -1149,25 +1163,11 @@ function handleSpatialQuery(latlng) {
     }).addTo(mapInstance);
     
     // Now trigger a re-render which will filter the features
+    // renderCases() will automatically update the popup content
     renderCases();
     
-    // Calculate the popup content based on the newly filtered features
-    const activeFeatures = getFilteredFeatures(); 
-    const count = activeFeatures.length;
-    
-    let diseaseCounts = {};
-    activeFeatures.forEach(f => {
-        const d = f.properties.disease_type;
-        diseaseCounts[d] = (diseaseCounts[d] || 0) + 1;
-    });
-    
-    let summaryHtml = `<div class="mb-2 fw-bold text-danger border-bottom pb-1">Radius Search: ${radiusKm}km</div>`;
-    summaryHtml += `<div class="mb-2"><strong>Total Cases: </strong> ${count}</div>`;
-    for (let [d, c] of Object.entries(diseaseCounts)) {
-        summaryHtml += `<div class="mb-1"><span class="badge" style="background-color:${getColorForCase(d)}">${d.toUpperCase()}</span> : ${c}</div>`;
-    }
-    
-    spatialQueryMarker.bindPopup(summaryHtml).openPopup();
+    // Bind an empty popup initially, the content gets populated during renderCases
+    spatialQueryMarker.bindPopup('<div class="spinner-border spinner-border-sm text-primary" role="status"></div>').openPopup();
 }
 
 // Time Slider Setup
@@ -1320,7 +1320,10 @@ function populateBoundaryDropdowns() {
                         const matchByName = provinces.find(
                             p => String(p.id) === String(selectedProvId) && p.name === d.province
                         );
-                        if (!matchById && !matchByName) return;
+                        // If the backend didn't supply province linkage, degrade gracefully and show it
+                        if (d.province !== undefined || d.province_id !== undefined) {
+                            if (!matchById && !matchByName) return;
+                        }
                     }
                     const opt = document.createElement('option');
                     opt.value       = d.id;

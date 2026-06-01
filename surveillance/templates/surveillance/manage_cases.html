@@ -290,37 +290,21 @@
     // Geocoding and MapLibre map for adding cases
     let reportMap, patientMarker, facilityMarker;
     
-    const esriImageryStyle = {
+    const satelliteStyle = {
         "version": 8,
         "sources": {
-            "esri-satellite": {
+            "google-hybrid": {
                 "type": "raster",
-                "tiles": ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+                "tiles": ["https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"],
                 "tileSize": 256,
-                "maxzoom": 18
-            },
-            "osm-labels": {
-                "type": "raster",
-                "tiles": [
-                    "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-                ],
-                "tileSize": 256,
-                "maxzoom": 19
+                "maxzoom": 21
             }
         },
         "layers": [
             {
-                "id": "esri-satellite-layer",
+                "id": "google-hybrid-layer",
                 "type": "raster",
-                "source": "esri-satellite",
-                "minzoom": 0,
-                "maxzoom": 22
-            },
-            {
-                "id": "osm-labels-layer",
-                "type": "raster",
-                "source": "osm-labels",
-                "paint": {"raster-opacity": 0.4},
+                "source": "google-hybrid",
                 "minzoom": 0,
                 "maxzoom": 22
             }
@@ -331,7 +315,7 @@
         if (!reportMap) {
             reportMap = new maplibregl.Map({
                 container: 'reportMiniMap',
-                style: esriImageryStyle,
+                style: satelliteStyle,
                 center: [29.155, -19.015],
                 zoom: 6
             });
@@ -538,7 +522,7 @@
                     lng: position.coords.longitude, 
                     lat: position.coords.latitude 
                 };
-                reportMap.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 18 });
+                reportMap.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 20 });
                 placePatientMarker(lngLat);
                 
                 btn.innerHTML = originalText;
@@ -549,7 +533,7 @@
                 btn.innerHTML = originalText;
                 btn.disabled = false;
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
         );
     });
 
