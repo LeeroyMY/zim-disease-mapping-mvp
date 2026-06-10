@@ -23,6 +23,8 @@ from rest_framework import viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.apps import apps
+from django.core.cache import cache
+import logging
 
 from django.db import connection
 from itertools import chain
@@ -46,56 +48,67 @@ def get_all_cases(request):
     """
     Returns a unified FeatureCollection of all diseases for the map.
     """
-    features = []
-    for model in _get_all_disease_models():
-        cases = model.objects.select_related('facility').order_by('-date_reported')
-        
-        # Manually serialize since dynamic models don't have predefined DRF serializers
-        for case in cases:
-            # Clinical Guardrail: Block HIV cases completely from the map point feed
-            if case.disease_type.lower() == 'hiv':
-                continue
-                
-            # Get all fields dynamically to include extra columns
-            properties = {}
-            for field in case._meta.fields:
-                if field.name not in ['location', 'patient_id', 'facility', 'reported_by', 'extra_data']:
-                    val = getattr(case, field.name)
-                    if isinstance(val, datetime):
-                        val = val.isoformat()
-                    # Also handle dates
-                    elif hasattr(val, 'isoformat'):
-                        val = val.isoformat()
-                    properties[field.name] = val
-                    
-            if hasattr(case, 'extra_data') and isinstance(case.extra_data, dict):
-                properties.update(case.extra_data)
-            
-            # Add facility name
-            properties['facility__name'] = case.facility.name if case.facility else None
-            properties['disease_type'] = case.disease_type.lower()
-            properties['id'] = case.id
-            
-            if case.location:
-                # Apply Donut Geomasking
-                r_min, r_max = get_geomasking_radii(case)
-                masked_lon, masked_lat = apply_donut_geomasking(
-                    case.location.x, case.location.y, r_min, r_max, seed_val=case.patient_id
-                )
-                
-                features.append({
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [masked_lon, masked_lat]
-                    },
-                    "properties": properties
-                })
+    cache_key = 'all_cases_geojson'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
 
-    return Response({
-        "type": "FeatureCollection",
-        "features": features
-    })
+    try:
+        features = []
+        for model in _get_all_disease_models():
+            cases = model.objects.select_related('facility').order_by('-date_reported')
+            
+            # Manually serialize since dynamic models don't have predefined DRF serializers
+            for case in cases:
+                # Clinical Guardrail: Block HIV cases completely from the map point feed
+                if case.disease_type.lower() == 'hiv':
+                    continue
+                    
+                # Get all fields dynamically to include extra columns
+                properties = {}
+                for field in case._meta.fields:
+                    if field.name not in ['location', 'patient_id', 'facility', 'reported_by', 'extra_data']:
+                        val = getattr(case, field.name)
+                        if isinstance(val, datetime):
+                            val = val.isoformat()
+                        # Also handle dates
+                        elif hasattr(val, 'isoformat'):
+                            val = val.isoformat()
+                        properties[field.name] = val
+                        
+                if hasattr(case, 'extra_data') and isinstance(case.extra_data, dict):
+                    properties.update(case.extra_data)
+                
+                # Add facility name
+                properties['facility__name'] = case.facility.name if case.facility else None
+                properties['disease_type'] = case.disease_type.lower()
+                properties['id'] = case.id
+                
+                if case.location:
+                    # Apply Donut Geomasking
+                    r_min, r_max = get_geomasking_radii(case)
+                    masked_lon, masked_lat = apply_donut_geomasking(
+                        case.location.x, case.location.y, r_min, r_max, seed_val=case.patient_id
+                    )
+                    
+                    features.append({
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [masked_lon, masked_lat]
+                        },
+                        "properties": properties
+                    })
+
+        response_data = {
+            "type": "FeatureCollection",
+            "features": features
+        }
+        cache.set(cache_key, response_data, 60 * 5) # Cache for 5 minutes
+        return Response(response_data)
+    except Exception as e:
+        logging.getLogger('django').error(f"Error in get_all_cases: {e}")
+        return Response({'error': 'Failed to load cases data. Please try again later.'}, status=500)
 
 @api_view(['GET'])
 def get_regions(request):
@@ -156,66 +169,70 @@ def get_latest_cases(request):
     Returns a unified FeatureCollection of cases reported after a specific timestamp.
     """
     since_timestamp = request.GET.get('since')
-    features = []
-    
-    from django.utils.dateparse import parse_datetime
-    
-    for model in _get_all_disease_models():
-        cases = model.objects.select_related('facility').order_by('-date_reported')
+    try:
+        features = []
         
-        if since_timestamp:
-            try:
-                # Handle possible 'Z' at the end of JS ISO strings using Django's parser which is robust
-                since_dt = parse_datetime(since_timestamp)
-                if since_dt is None: # Fallback
-                    since_dt = datetime.fromisoformat(since_timestamp.replace('Z', '+00:00'))
-                if since_dt:
-                    cases = cases.filter(date_reported__gt=since_dt)
-            except ValueError:
-                pass
-                
-        for case in cases:
-            # Clinical Guardrail: Block HIV cases completely from the map point feed
-            if case.disease_type.lower() == 'hiv':
-                continue
-                
-            properties = {}
-            for field in case._meta.fields:
-                if field.name not in ['location', 'patient_id', 'facility', 'reported_by', 'extra_data']:
-                    val = getattr(case, field.name)
-                    if isinstance(val, datetime):
-                        val = val.isoformat()
-                    elif hasattr(val, 'isoformat'):
-                        val = val.isoformat()
-                    properties[field.name] = val
-                    
-            if hasattr(case, 'extra_data') and isinstance(case.extra_data, dict):
-                properties.update(case.extra_data)
-                    
-            properties['facility__name'] = case.facility.name if case.facility else None
-            properties['disease_type'] = case.disease_type.lower()
-            properties['id'] = case.id
+        from django.utils.dateparse import parse_datetime
+        
+        for model in _get_all_disease_models():
+            cases = model.objects.select_related('facility').order_by('-date_reported')
             
-            if case.location:
-                # Apply Donut Geomasking
-                r_min, r_max = get_geomasking_radii(case)
-                masked_lon, masked_lat = apply_donut_geomasking(
-                    case.location.x, case.location.y, r_min, r_max, seed_val=case.patient_id
-                )
+            if since_timestamp:
+                try:
+                    # Handle possible 'Z' at the end of JS ISO strings using Django's parser which is robust
+                    since_dt = parse_datetime(since_timestamp)
+                    if since_dt is None: # Fallback
+                        since_dt = datetime.fromisoformat(since_timestamp.replace('Z', '+00:00'))
+                    if since_dt:
+                        cases = cases.filter(date_reported__gt=since_dt)
+                except ValueError:
+                    pass
+                    
+            for case in cases:
+                # Clinical Guardrail: Block HIV cases completely from the map point feed
+                if case.disease_type.lower() == 'hiv':
+                    continue
+                    
+                properties = {}
+                for field in case._meta.fields:
+                    if field.name not in ['location', 'patient_id', 'facility', 'reported_by', 'extra_data']:
+                        val = getattr(case, field.name)
+                        if isinstance(val, datetime):
+                            val = val.isoformat()
+                        elif hasattr(val, 'isoformat'):
+                            val = val.isoformat()
+                        properties[field.name] = val
+                        
+                if hasattr(case, 'extra_data') and isinstance(case.extra_data, dict):
+                    properties.update(case.extra_data)
+                        
+                properties['facility__name'] = case.facility.name if case.facility else None
+                properties['disease_type'] = case.disease_type.lower()
+                properties['id'] = case.id
                 
-                features.append({
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [masked_lon, masked_lat]
-                    },
-                    "properties": properties
-                })
-                
-    return Response({
-        "type": "FeatureCollection",
-        "features": features
-    })
+                if case.location:
+                    # Apply Donut Geomasking
+                    r_min, r_max = get_geomasking_radii(case)
+                    masked_lon, masked_lat = apply_donut_geomasking(
+                        case.location.x, case.location.y, r_min, r_max, seed_val=case.patient_id
+                    )
+                    
+                    features.append({
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [masked_lon, masked_lat]
+                        },
+                        "properties": properties
+                    })
+                    
+        return Response({
+            "type": "FeatureCollection",
+            "features": features
+        })
+    except Exception as e:
+        logging.getLogger('django').error(f"Error in get_latest_cases: {e}")
+        return Response({'error': 'Failed to load latest cases data.'}, status=500)
 
 class AdministrativeBoundaryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AdministrativeBoundary.objects.all()
@@ -237,6 +254,9 @@ def calculate_spatial_clustering(request):
         points = data.get('points', [])
         diseases = data.get('diseases', [])
         
+        if not isinstance(points, list) or not isinstance(diseases, list):
+            return Response({"error": "Invalid payload format. 'points' and 'diseases' must be arrays."}, status=400)
+            
         if not points or len(points) < 5:
             return Response({"error": "Not enough points for clustering."}, status=400)
             

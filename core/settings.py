@@ -13,12 +13,11 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 import dj_database_url
 
-# Only use Windows OSGeo4W paths if running on local Windows machine
-if os.name == 'nt':
-    GDAL_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\gdal312.dll"
-    GEOS_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\geos_c.dll"
-    os.environ['PROJ_LIB'] = r'C:\Users\user\AppData\Local\Programs\OSGeo4W\share\proj'
-    os.environ['GDAL_DATA'] = r'C:\Users\user\AppData\Local\Programs\OSGeo4W\share\gdal'
+GDAL_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\gdal312.dll"
+GEOS_LIBRARY_PATH = r"C:\Users\user\AppData\Local\Programs\OSGeo4W\bin\geos_c.dll"
+
+os.environ['PROJ_LIB'] = r'C:\Users\user\AppData\Local\Programs\OSGeo4W\share\proj'
+os.environ['GDAL_DATA'] = r'C:\Users\user\AppData\Local\Programs\OSGeo4W\share\gdal'
 
 
 from pathlib import Path
@@ -34,9 +33,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', "django-insecure-o4ep00l^9d+m0dpl#j8wf584w0mcxey(grjl)vmq*m)4vp$pbc")
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# For local development, default to True. Ensure DEBUG is set to 'False' in production (e.g. on Render).
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver,*').split(',')
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://infectious-diseases-mapping.onrender.com',
+]
+# If the user provides extra allowed hosts, try to add them to CSRF trusted origins to be safe
+for host in ALLOWED_HOSTS:
+    if host and host != '*' and host not in ['localhost', '127.0.0.1', 'testserver']:
+        CSRF_TRUSTED_ORIGINS.append(f"https://{host}")
 
 # Production Security Headers
 SECURE_BROWSER_XSS_FILTER = True
@@ -101,7 +109,9 @@ WSGI_APPLICATION = "core.wsgi.application"
 DATABASES = {
     'default': dj_database_url.config(
         default='postgis://postgres:Maturure00398@@localhost:5432/zim_disease_db',
-        engine='django.contrib.gis.db.backends.postgis'
+        engine='django.contrib.gis.db.backends.postgis',
+        conn_max_age=600,
+        conn_health_checks=True,
     )
 }
 
@@ -141,7 +151,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / 'staticfiles' 
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+if not DEBUG:
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
 
 # (Leaflet configuration removed, MapLibre is configured on the frontend)
 

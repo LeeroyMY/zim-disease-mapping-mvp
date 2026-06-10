@@ -28,7 +28,8 @@ function getCookie(name) {
 }
 
 // DataTable Instance
-let casesDataTable;
+let currentSliderIndex = 0;
+let datasetsByDisease = {}; // store data for downloads
 
 // Distinct Variant Color Palette
 const COLORS = {
@@ -111,67 +112,70 @@ const DISEASE_ICONS = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize visibleDiseases from new UI
-    document.querySelectorAll('.disease-filter-row').forEach(row => {
-        const disease = row.getAttribute('data-disease');
-        visibleDiseases.push(disease);
-        visibleVariants[disease] = ""; // All variants by default
-        
-        const iconBtn = row.querySelector('.disease-icon-btn');
-        const iconElement = iconBtn.querySelector('i');
-        const selectBox = row.querySelector('.variant-dropdown');
-        
-        if (DISEASE_ICONS[disease]) {
-            iconElement.className = 'bi fs-5 ' + DISEASE_ICONS[disease];
-        } else {
-            iconElement.className = 'bi fs-5 bi-bug'; // generic
-        }
-        
-        iconBtn.style.backgroundColor = getColorForCase(disease, null);
-        
-        if (COLORS[disease]) {
-            Object.keys(COLORS[disease]).forEach(variant => {
-                if (variant !== 'base' && variant !== 'default') {
-                    const opt = document.createElement('option');
-                    opt.value = variant;
-                    opt.innerText = variant;
-                    selectBox.appendChild(opt);
+    // Initialize visibleDiseases array based on options
+    const diseaseSelect = document.getElementById('global-disease-select');
+    const variantSelect = document.getElementById('global-variant-select');
+    
+    if (diseaseSelect) {
+        const diseaseOptions = Array.from(diseaseSelect.options);
+        diseaseOptions.forEach(opt => {
+            if (opt.value) {
+                visibleDiseases.push(opt.value);
+                visibleVariants[opt.value] = "";
+            }
+        });
+
+        diseaseSelect.addEventListener('change', function() {
+            const selectedDisease = this.value;
+            if (selectedDisease === "") {
+                // All diseases selected
+                visibleDiseases = diseaseOptions.filter(o => o.value).map(o => o.value);
+                variantSelect.innerHTML = '<option value="">All Variants</option>';
+                variantSelect.disabled = true;
+                // Clear all variant filters
+                visibleDiseases.forEach(d => visibleVariants[d] = "");
+            } else {
+                // Specific disease selected
+                visibleDiseases = [selectedDisease];
+                variantSelect.disabled = false;
+                variantSelect.innerHTML = '<option value="">All Variants</option>';
+                // Populate variants for this disease if any
+                if (COLORS[selectedDisease]) {
+                    Object.keys(COLORS[selectedDisease]).forEach(variant => {
+                        if (variant !== 'base' && variant !== 'default') {
+                            const opt = document.createElement('option');
+                            opt.value = variant;
+                            opt.innerText = variant;
+                            variantSelect.appendChild(opt);
+                        }
+                    });
+                }
+                // Clear other variant filters
+                Object.keys(visibleVariants).forEach(d => visibleVariants[d] = "");
+            }
+            renderCases();
+            updateLegend();
+            updateDatasetTable();
+        });
+
+        if (variantSelect) {
+            variantSelect.addEventListener('change', function() {
+                const selectedDisease = diseaseSelect.value;
+                if (selectedDisease) {
+                    visibleVariants[selectedDisease] = this.value;
+                    renderCases();
+                    updateLegend();
                 }
             });
         }
-        
-        selectBox.addEventListener('change', function() {
-            visibleVariants[disease] = this.value;
-            renderCases();
-            updateLegend();
-        });
-    });
+    }
 
     initMap();
     initMapSearch();
 });
 
-
 window.toggleDiseaseFilter = function(disease, element) {
-    const iconBtn = element.querySelector('.disease-icon-btn');
-    const selectBox = element.parentElement.querySelector('.variant-dropdown');
-    const isActive = iconBtn.getAttribute('data-active') === 'true';
-    
-    if (isActive) {
-        iconBtn.setAttribute('data-active', 'false');
-        iconBtn.style.backgroundColor = '#6c757d';
-        selectBox.disabled = true;
-        visibleDiseases = visibleDiseases.filter(d => d !== disease);
-    } else {
-        iconBtn.setAttribute('data-active', 'true');
-        iconBtn.style.backgroundColor = getColorForCase(disease, null);
-        selectBox.disabled = false;
-        if (!visibleDiseases.includes(disease)) {
-            visibleDiseases.push(disease);
-        }
-    }
-    renderCases();
-    updateLegend();
+    // Deprecated: Replaced by global dropdown
 };
 
 function initMap() {
@@ -212,7 +216,6 @@ function initMap() {
             sidePanel.insertBefore(timeSlider, actionButtons);
         }
     });
-
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(mapInstance);
@@ -283,8 +286,14 @@ function initMap() {
         btn.disabled = true;
         
         fetch('/api/cases/')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) {
+                    return res.json().then(err => { throw new Error(err.error || "Server Error"); }).catch(() => { throw new Error("Network/Server Error"); });
+                }
+                return res.json();
+            })
             .then(data => {
+                if (data.error) throw new Error(data.error);
                 allCases = data.features || (data.results && data.results.features) || data.results || [];
                 if (allCases.length === 0) {
                     alert('No cases found in database.');
@@ -314,12 +323,12 @@ function initMap() {
                     if (v) uniqueVariants[d].add(v);
                 });
                 
-                // Update dropdowns
-                document.querySelectorAll('.disease-filter-row').forEach(row => {
-                    const disease = row.getAttribute('data-disease');
-                    const selectBox = row.querySelector('.variant-dropdown');
-                    if (uniqueVariants[disease]) {
-                        uniqueVariants[disease].forEach(v => {
+                // Update global variant dropdown if a specific disease is selected
+                const currentDisease = document.getElementById('global-disease-select')?.value;
+                if (currentDisease && uniqueVariants[currentDisease]) {
+                    const selectBox = document.getElementById('global-variant-select');
+                    if (selectBox) {
+                        uniqueVariants[currentDisease].forEach(v => {
                             if (v && v.trim() !== "") {
                                 let exists = false;
                                 for (let i = 0; i < selectBox.options.length; i++) {
@@ -334,7 +343,7 @@ function initMap() {
                             }
                         });
                     }
-                });
+                }
                 
                 setupSlider(minDate.getTime(), maxDate.getTime());
                 renderCases();
@@ -384,8 +393,17 @@ function startLiveCasePolling() {
     if (livePollInterval) clearInterval(livePollInterval);
     livePollInterval = setInterval(() => {
         fetch(`/api/latest-cases/?since=${encodeURIComponent(lastPollTimestamp)}`)
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) {
+                    return res.json().then(err => { throw new Error(err.error || "Server Error"); }).catch(() => { throw new Error("Network/Server Error"); });
+                }
+                return res.json();
+            })
             .then(data => {
+                if (data.error) {
+                    console.warn("Polling error response:", data.error);
+                    return;
+                }
                 const newCases = data.features || (data.results && data.results.features) || data.results || [];
                 if (newCases.length > 0) {
                     // Update timestamp
@@ -455,25 +473,8 @@ function startLiveCasePolling() {
 }
 
 function getFilteredFeatures() {
-    const provId   = document.getElementById('province-select').value;
-    const distId   = document.getElementById('district-select').value;
     const severity = document.getElementById('filter-severity').value;
     const outcome  = document.getElementById('filter-outcome').value;
-
-    // Build a Turf polygon for the selected boundary (district wins over province)
-    let selectedBoundaryPolygon = null;
-    const targetId = distId || provId;
-    if (targetId && window.boundaryLayer) {
-        window.boundaryLayer.eachLayer(layer => {
-            if (selectedBoundaryPolygon) return; // already found
-            const props = layer.feature && layer.feature.properties;
-            if (props && String(props.id) === String(targetId)) {
-                try {
-                    selectedBoundaryPolygon = layer.toGeoJSON();
-                } catch(e) { /* skip */ }
-            }
-        });
-    }
 
     return allCases.filter(c => {
         // Guard against invalid coordinates to prevent Deck.GL rendering crashes
@@ -503,17 +504,9 @@ function getFilteredFeatures() {
         const dateMatch = !caseTime || isNaN(caseTime) || (caseTime >= dateRange.min && caseTime <= dateRange.max);
 
         let geoMatch = true;
-        if (selectedBoundaryPolygon && c.geometry && c.geometry.coordinates) {
-            try {
-                const pt = turf.point(c.geometry.coordinates);
-                geoMatch = turf.booleanPointInPolygon(pt, selectedBoundaryPolygon);
-            } catch(e) {
-                geoMatch = true; // fail open
-            }
-        }
         
         // Add spatial pin drop radius filtering
-        if (geoMatch && spatialQueryEnabled && window.spatialQueryPolygon && c.geometry && c.geometry.coordinates) {
+        if (spatialQueryEnabled && window.spatialQueryPolygon && c.geometry && c.geometry.coordinates) {
             try {
                 const pt = turf.point(c.geometry.coordinates);
                 geoMatch = turf.booleanPointInPolygon(pt, window.spatialQueryPolygon);
@@ -629,10 +622,8 @@ function renderCases() {
         for (let [d, c] of Object.entries(diseaseCounts)) {
             summaryHtml += `<div class="mb-1"><span class="badge" style="background-color:${getColorForCase(d)}">${d.toUpperCase()}</span> : ${c}</div>`;
         }
-        
         spatialQueryMarker.setPopupContent(summaryHtml);
     }
-
     updateDatasetTable(activeFeatures);
     updateTimeSeriesChart(activeFeatures);
     updateTrendAnalysis();
@@ -1162,12 +1153,13 @@ function handleSpatialQuery(latlng) {
         }
     }).addTo(mapInstance);
     
-    // Now trigger a re-render which will filter the features
-    // renderCases() will automatically update the popup content
-    renderCases();
-    
-    // Bind an empty popup initially, the content gets populated during renderCases
-    spatialQueryMarker.bindPopup('<div class="spinner-border spinner-border-sm text-primary" role="status"></div>').openPopup();
+    // 1. Bind an empty spinner popup initially and open it so the user sees it loading
+    spatialQueryMarker.bindPopup('<div class="d-flex align-items-center"><div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div><span>Calculating...</span></div>').openPopup();
+
+    // 2. Use setTimeout to allow the browser to paint the spinner before starting the heavy filtering
+    setTimeout(() => {
+        renderCases(); // This will calculate everything and overwrite the spinner with the actual summary
+    }, 50);
 }
 
 // Time Slider Setup
@@ -1334,7 +1326,16 @@ function populateBoundaryDropdowns() {
 
             renderDistricts(null);  // all districts on first load
 
-            const s2base = { theme: 'bootstrap-5', width: '100%', allowClear: true };
+            const s2base = { 
+                theme: 'bootstrap-5', 
+                width: '100%', 
+                allowClear: true,
+                language: {
+                    noResults: function() {
+                        return "Region not found";
+                    }
+                }
+            };
 
             $(provSelect).select2({ ...s2base, placeholder: 'All Provinces' });
             $(distSelect).select2({ ...s2base, placeholder: 'All Districts' });
@@ -1349,16 +1350,13 @@ function populateBoundaryDropdowns() {
                 $(distSelect).val('').trigger('change.select2');
 
                 $(distSelect).off('select2:select select2:clear').on('select2:select select2:clear', function () {
-                    renderCases();
                     filterBoundaryLayer($(provSelect).val(), $(this).val());
                 });
 
-                renderCases();
                 filterBoundaryLayer(pid, '');
             });
 
             $(distSelect).on('select2:select select2:clear', function () {
-                renderCases();
                 filterBoundaryLayer($(provSelect).val(), $(this).val());
             });
 
@@ -1407,8 +1405,13 @@ function filterBoundaryLayer(provId, distId) {
             }
         }
     });
-    if (bounds.isValid()) {
-        mapInstance.fitBounds(bounds, {padding: [50, 50]});
+    
+    // Only zoom if we have a specific selection AND bounds are valid
+    if (bounds.isValid() && (distId !== "" || provId !== "")) {
+        mapInstance.flyToBounds(bounds, {padding: [50, 50], maxZoom: 10, duration: 1.5});
+    } else if (distId === "" && provId === "") {
+        // Reset view to default if no region selected
+        mapInstance.flyTo([-19.0154, 29.1549], 6, {duration: 1.5});
     }
 }
 
@@ -1424,19 +1427,6 @@ document.getElementById('btnToggleDataset')?.addEventListener('click', function(
         this.innerHTML = '<i class="bi bi-layout-split fs-5"></i> <span>Hide Dataset</span>';
         this.classList.replace('action-btn-gray', 'action-btn-outline');
         
-        // Initialize table if needed
-        if (!casesDataTable) {
-            casesDataTable = $('#interactiveDatasetTable').DataTable({
-                dom: '<"d-flex justify-content-between align-items-center mb-3"Bf>rt<"d-flex justify-content-between align-items-center mt-3"ip>',
-                pageLength: 25,
-                responsive: true,
-                order: [[5, 'desc']], 
-                language: {
-                    search: "",
-                    searchPlaceholder: "Search cases..."
-                }
-            });
-        }
         updateDatasetTable(getFilteredFeatures());
     } else {
         wrapper.style.display = 'none';
@@ -1446,35 +1436,132 @@ document.getElementById('btnToggleDataset')?.addEventListener('click', function(
 });
 
 function updateDatasetTable(features) {
-    if (!casesDataTable) return;
+    const track = document.getElementById('dataset-slider-track');
+    if (!track) return;
     
-    const tbody = document.querySelector('#interactiveDatasetTable tbody');
-    if (!features || features.length === 0) {
-        casesDataTable.clear().draw();
+    track.innerHTML = '';
+    datasetsByDisease = {};
+    
+    if (!features || features.length === 0 || visibleDiseases.length === 0) {
+        track.innerHTML = '<div style="flex: 0 0 100%; width: 100%; padding: 20px; text-align: center;" class="text-muted">No records found.</div>';
+        document.getElementById('dataset-title').innerText = 'Case Dataset';
         return;
     }
 
-    casesDataTable.clear();
+    visibleDiseases.forEach((disease, index) => {
+        const diseaseFeatures = features.filter(f => f.properties.disease_type.toLowerCase() === disease.toLowerCase());
+        datasetsByDisease[disease] = diseaseFeatures; // save for download
+        
+        const color = getColorForCase(disease);
+        
+        // Build table
+        let tableHtml = `
+            <div style="flex: 0 0 100%; width: 100%; height: 100%; overflow-y: auto; padding: 15px;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="fw-bold" style="color: ${color}">${disease.toUpperCase()} Entries (${diseaseFeatures.length})</h6>
+                    <button class="btn btn-sm btn-success shadow-sm" onclick="downloadDiseaseCSV('${disease}')">
+                        <i class="bi bi-download me-1"></i> Download ${disease.toUpperCase()} CSV
+                    </button>
+                </div>
+                <table class="table table-striped table-hover small" style="width:100%; border: 1px solid #dee2e6;">
+                    <thead style="position: sticky; top: 0; background: #f8f9fa; z-index: 1;">
+                        <tr>
+                            <th>ID</th><th>Disease</th><th>Variant</th><th>Facility</th><th>Location</th><th>Date of Onset</th><th>Severity</th><th>Outcome</th><th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        if (diseaseFeatures.length === 0) {
+            tableHtml += `<tr><td colspan="9" class="text-center text-muted py-3">No cases found for ${disease}</td></tr>`;
+        } else {
+            diseaseFeatures.forEach(f => {
+                const p = f.properties;
+                tableHtml += `
+                    <tr>
+                        <td><strong>#${p.id}</strong></td>
+                        <td><span class="badge" style="background-color: ${color}">${p.disease_type.toUpperCase()}</span></td>
+                        <td>${p.variant || '-'}</td>
+                        <td><span class="small fw-bold text-muted">${p.facility__name || p.facility_name || '-'}</span></td>
+                        <td>${p.location_name || '-'}</td>
+                        <td>${p.date_of_onset || '-'}</td>
+                        <td>${p.severity || '-'}</td>
+                        <td>${p.outcome || '-'}</td>
+                        <td><button class="btn btn-sm btn-outline-primary py-0 px-2 shadow-sm" onclick="zoomToCase(${f.geometry.coordinates[0]}, ${f.geometry.coordinates[1]})"><i class="bi bi-crosshair"></i> Locate</button></td>
+                    </tr>
+                `;
+            });
+        }
+        
+        tableHtml += `</tbody></table></div>`;
+        track.innerHTML += tableHtml;
+    });
+    
+    // Ensure index is valid
+    if (currentSliderIndex >= visibleDiseases.length) {
+        currentSliderIndex = Math.max(0, visibleDiseases.length - 1);
+    }
+    
+    updateSliderUI();
+}
 
+function updateSliderUI() {
+    const track = document.getElementById('dataset-slider-track');
+    const title = document.getElementById('dataset-title');
+    if (!track || visibleDiseases.length === 0) return;
+    
+    track.style.transform = `translateX(-${currentSliderIndex * 100}%)`;
+    title.innerText = visibleDiseases[currentSliderIndex].toUpperCase() + ' Dataset';
+}
+
+document.getElementById('btnSlideLeft')?.addEventListener('click', function() {
+    if (visibleDiseases.length <= 1) return;
+    currentSliderIndex = (currentSliderIndex > 0) ? currentSliderIndex - 1 : visibleDiseases.length - 1;
+    updateSliderUI();
+});
+
+document.getElementById('btnSlideRight')?.addEventListener('click', function() {
+    if (visibleDiseases.length <= 1) return;
+    currentSliderIndex = (currentSliderIndex < visibleDiseases.length - 1) ? currentSliderIndex + 1 : 0;
+    updateSliderUI();
+});
+
+window.downloadDiseaseCSV = function(disease) {
+    const features = datasetsByDisease[disease];
+    if (!features || features.length === 0) {
+        alert("No data available to download.");
+        return;
+    }
+    
+    let csvContent = "data:text/csv;charset=utf-8,";
+    const headers = ['ID', 'Disease', 'Variant', 'Facility', 'Location', 'Date of Onset', 'Severity', 'Outcome', 'Coordinates'];
+    csvContent += headers.join(",") + "\\r\\n";
+    
     features.forEach(f => {
         const p = f.properties;
-        const color = getColorForCase(p.disease_type, p.variant);
+        const coords = f.geometry && f.geometry.coordinates ? `"${f.geometry.coordinates[1]}, ${f.geometry.coordinates[0]}"` : "N/A";
         const row = [
-            `<strong>#${p.id}</strong>`,
-            `<span class="badge" style="background-color: ${color}">${p.disease_type.toUpperCase()}</span>`,
-            p.variant || '-',
-            `<span class="small fw-bold text-muted">${p.facility__name || p.facility_name || '-'}</span>`,
-            p.location_name || '-',
-            p.date_of_onset || '-',
-            p.severity || '-',
-            p.outcome || '-',
-            `<button class="btn btn-sm btn-outline-primary py-0 px-2 shadow-sm" onclick="zoomToCase(${f.geometry.coordinates[0]}, ${f.geometry.coordinates[1]})"><i class="bi bi-crosshair"></i> Locate</button>`
+            p.id,
+            p.disease_type,
+            p.variant || '',
+            (p.facility__name || p.facility_name || '').replace(/"/g, '""'),
+            (p.location_name || '').replace(/"/g, '""'),
+            p.date_of_onset || '',
+            p.severity || '',
+            p.outcome || '',
+            coords
         ];
-        casesDataTable.row.add(row);
+        csvContent += row.map(v => `"${v}"`).join(",") + "\r\n";
     });
-
-    casesDataTable.draw();
-}
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", disease + "_dataset.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
 
 window.zoomToCase = function(lng, lat) {
     mapInstance.setView([lat, lng], 14, {animate: true});
@@ -1503,9 +1590,10 @@ if (dragHandle) {
         if (!isDragging) return;
         const dy = startY - e.clientY;
         const newHeight = startHeight + dy;
-        const maxHeight = window.innerHeight * 0.9;
+        const maxHeight = window.innerHeight - 60; // Leave space for navbar
         
         if (newHeight >= 100 && newHeight <= maxHeight) {
+            datasetWrapper.style.flex = `0 0 ${newHeight}px`;
             datasetWrapper.style.height = `${newHeight}px`;
         }
     });
@@ -1545,95 +1633,9 @@ document.getElementById('btnFullscreenDataset')?.addEventListener('click', funct
         dragHandle.style.display = 'none';
         this.innerHTML = '<i class="bi bi-fullscreen-exit"></i>';
     }
-    
-    if (casesDataTable) {
-        setTimeout(() => casesDataTable.columns.adjust().draw(), 200);
-    }
 });
 
-let currentDiseaseFilterIndex = -1;
-function applyDiseaseDatasetFilter() {
-    if (!casesDataTable) return;
-    
-    if (visibleDiseases.length === 0) {
-        casesDataTable.search('').columns().search('').draw();
-        document.getElementById('dataset-title').innerText = 'Case Dataset';
-        return;
-    }
-    
-    if (currentDiseaseFilterIndex < 0 || currentDiseaseFilterIndex >= visibleDiseases.length) {
-        // Show all visible diseases
-        casesDataTable.search('').columns().search('').draw();
-        document.getElementById('dataset-title').innerText = 'All Mapped Diseases';
-    } else {
-        const targetDisease = visibleDiseases[currentDiseaseFilterIndex];
-        // Column 1 is Disease type in the DataTable
-        casesDataTable.column(1).search('^' + targetDisease.toUpperCase() + '$', true, false).draw();
-        document.getElementById('dataset-title').innerText = targetDisease.toUpperCase() + ' Dataset';
-    }
-}
-
-document.getElementById('btnNextDataset')?.addEventListener('click', function() {
-    if (visibleDiseases.length === 0) return;
-    currentDiseaseFilterIndex++;
-    if (currentDiseaseFilterIndex >= visibleDiseases.length) {
-        currentDiseaseFilterIndex = -1; // Reset to show all
-    }
-    applyDiseaseDatasetFilter();
-});
-
-document.getElementById('btnPrevDataset')?.addEventListener('click', function() {
-    if (visibleDiseases.length === 0) return;
-    currentDiseaseFilterIndex--;
-    if (currentDiseaseFilterIndex < -1) {
-        currentDiseaseFilterIndex = visibleDiseases.length - 1;
-    }
-    applyDiseaseDatasetFilter();
-});
-
-document.getElementById('btnDownloadCSV')?.addEventListener('click', function() {
-    if (!casesDataTable) return;
-    
-    // Get currently filtered data from datatable
-    const data = casesDataTable.rows({ filter: 'applied' }).data().toArray();
-    
-    if (data.length === 0) {
-        alert("No data available to download.");
-        return;
-    }
-    
-    // Extract headers
-    let csvContent = "data:text/csv;charset=utf-8,";
-    const headers = ['ID', 'Disease', 'Variant', 'Facility', 'Location', 'Date of Onset', 'Severity', 'Outcome'];
-    csvContent += headers.join(",") + "\r\n";
-    
-    data.forEach(function(rowArray) {
-        // Strip HTML tags from each column
-        const cleanRow = rowArray.slice(0, 8).map(htmlStr => {
-            if (typeof htmlStr === 'string') {
-                // Strip tags
-                let clean = htmlStr.replace(/<[^>]*>?/gm, '');
-                // Escape quotes
-                clean = clean.replace(/"/g, '""');
-                return `"${clean}"`;
-            }
-            return htmlStr;
-        });
-        csvContent += cleanRow.join(",") + "\r\n";
-    });
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    let filename = "dataset_export.csv";
-    if (currentDiseaseFilterIndex >= 0 && currentDiseaseFilterIndex < visibleDiseases.length) {
-        filename = visibleDiseases[currentDiseaseFilterIndex] + "_dataset.csv";
-    }
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-});
+// Removed old tabs and datatable filter logic completely
 
 // --- Time Series Chart Logic ---
 let timeSeriesChart = null;

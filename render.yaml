@@ -2,12 +2,11 @@ services:
   - type: web
     name: infectious-diseases-mapping
     env: python
-    plan: free
     buildCommand: "./render_build.sh"
-    startCommand: "gunicorn core.wsgi:application"
+    startCommand: "gunicorn core.wsgi:application --workers 2 --threads 4 --timeout 120"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12.2
+        value: 3.11.0
       - key: DATABASE_URL
         sync: false
       - key: SECRET_KEY

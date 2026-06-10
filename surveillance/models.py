@@ -32,7 +32,6 @@ class AdministrativeBoundary(models.Model):
     LEVEL_CHOICES = [
         ('province', 'Province'),
         ('district', 'District'),
-        ('ward', 'Ward'),
     ]
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES)
     geom = gis_models.MultiPolygonField(srid=4326)
