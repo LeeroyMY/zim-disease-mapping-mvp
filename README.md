@@ -1,4 +1,4 @@
-# ZimEpi Tracker 🌍🦠
+# ZimEpi Tracker 🌍
 
 ![Django](https://img.shields.io/badge/Django-092E20?style=for-the-badge&logo=django&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
@@ -12,29 +12,29 @@ This repository contains the source code for the prototype, demonstrating a full
 
 ---
 
-## 🎯 Key Features
+##  Key Features
 
-### 1. 🔐 Role-Oriented Access & Workflows
+### 1.  Role-Oriented Access & Workflows
 *   **Custom Login Interface**: A dedicated, branded entry point separating clinical and administrative pathways.
 *   **Health Personnel Dashboard**: A custom case management interface (CRUD) for reporting and managing individual disease records.
 *   **Administrator Dashboard**: A high-level spatial analytics dashboard for national disease tracking.
 
-### 2. 🗺️ Advanced Geospatial Visualisation
+### 2.  Advanced Geospatial Visualisation
 *   **Point-Level Mapping**: High-performance rendering of thousands of individual case points using **Deck.GL** and **Leaflet**.
 *   **Interactive Coordinate Capture**: Integrated **MapLibre** and **OpenLocationCode (Plus Codes)** in the reporting form to ensure highly accurate, standardized patient origin capture.
 *   **Administrative Context**: Overlays of 101 province and district-level administrative boundaries.
 
-### 3. 📊 Spatial Analytics & Privacy
+### 3.  Spatial Analytics & Privacy
 *   **Automated Donut Geomasking**: A privacy-preserving algorithm executed during API serialization. It automatically shifts true patient coordinates into an obscured radius (e.g., min 50m, max 500m) to protect identities while maintaining analytical validity.
 *   **Backend Statistical Clustering**: Outbreak detection is offloaded directly to the database using **PostGIS `ST_ClusterDBSCAN`**, providing highly accurate, parameter-driven spatial clustering without burdening the browser memory.
 
-### 4. 📈 Dynamic Data Management
+### 4.  Dynamic Data Management
 *   **Dynamic Schema Validation**: Supports the bulk ingestion of historical datasets (CSV/Excel) with dynamic column expansion to adapt to unpredictable data schemas.
 *   **Real-time Temporal Filtering**: A highly responsive frontend dashboard enabling epidemiologists to instantly filter by disease, variant, severity, and date of onset.
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 The project adheres to a four-layer technical architecture:
 
@@ -45,7 +45,7 @@ The project adheres to a four-layer technical architecture:
 
 ---
 
-## 🚀 Setup & Installation
+##  Setup & Installation
 
 ### Prerequisites
 *   Python 3.10+
@@ -89,7 +89,7 @@ The project adheres to a four-layer technical architecture:
 
 ---
 
-## 📖 User Manual & Navigation Guide
+##  User Manual & Navigation Guide
 
 ### 1. Logging In
 Navigate to `http://localhost:8000/accounts/login/`. You will be presented with the ZimEpi Tracker custom login interface. 
@@ -120,7 +120,7 @@ If you log in as Health Personnel, you are routed to the **Case Management** int
 
 ---
 
-## 🧪 Evaluation Metrics & Benchmarks
+##  Evaluation Metrics & Benchmarks
 
 During simulated national-scale load testing, the prototype achieved the following benchmarks:
 *   **Dataset Capacity**: Successfully rendered 8,898 simultaneous line-list case records alongside 101 high-resolution polygon boundaries.
@@ -129,7 +129,7 @@ During simulated national-scale load testing, the prototype achieved the followi
 
 ---
 
-## 🔮 Future Work
+##  Future Work
 While the prototype successfully proves the technical viability of the framework, future phases would include:
 *   Integration with national **DHIS2** APIs.
 *   Implementation of production-level audit logging.
