@@ -1913,6 +1913,20 @@ document.getElementById('btn-close-legend')?.addEventListener('click', function(
 let trendAnalysisChart = null;
 let correlationAnalysisChart = null;
 
+// EMA Alpha parameter configuration
+window.EMA_ALPHA = 0.4; // Default standard PAHO 4-week alpha
+
+function calculateEMA(data, alpha) {
+    if (data.length === 0) return [];
+    let result = [data[0]];
+    for (let i = 1; i < data.length; i++) {
+        let prev = result[i - 1] === null ? 0 : result[i - 1];
+        let curr = data[i] === null ? prev : data[i];
+        result.push((curr * alpha) + (prev * (1 - alpha)));
+    }
+    return result;
+}
+
 function calculateLinearRegression(x, y) {
     const n = y.length;
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
@@ -1990,7 +2004,7 @@ function updateTrendAnalysis() {
         return;
     }
     
-    const emaLine = calculateEMA(yValues, 0.4); 
+    const emaLine = calculateEMA(yValues, window.EMA_ALPHA); 
     
     // OLS on EMA (exclude active week if present)
     const olsLength = hasIncompleteWeek ? xValues.length - 1 : xValues.length;

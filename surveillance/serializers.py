@@ -36,6 +36,16 @@ class AdministrativeBoundarySerializer(GeoFeatureModelSerializer):
         geo_field = 'geom'
         fields = ('id', 'name', 'code', 'level')
 
+from rest_framework_gis.fields import GeometryField
+
+class AdministrativeBoundarySimplifiedSerializer(GeoFeatureModelSerializer):
+    geom_simplified = GeometryField(read_only=True)
+    
+    class Meta:
+        model = AdministrativeBoundary
+        geo_field = 'geom_simplified'
+        fields = ('id', 'name', 'code', 'level', 'geom_simplified')
+
 class HealthFacilitySerializer(GeoFeatureModelSerializer):
     class Meta:
         model = HealthFacility

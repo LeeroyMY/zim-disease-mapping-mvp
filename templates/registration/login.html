@@ -81,9 +81,8 @@
 
 <script>
     function selectRole(username, password) {
-        // Populate the standard visible form fields so user can see them
-        document.getElementById('visibleUsername').value = username;
-        document.getElementById('visiblePassword').value = password;
+        // Form is visible, user must type their credentials manually.
+        // We no longer auto-fill passwords for security reasons.
         
         // Add a slight visual pulse to the button to indicate it's ready
         const btn = document.getElementById('btnSignIn');
@@ -95,8 +94,8 @@
             btn.classList.add('btn-primary');
         }, 800);
         
-        // Focus the button so they can just hit enter or click it
-        btn.focus();
+        // Focus the username field instead of auto-submitting
+        document.getElementById('visibleUsername').focus();
     }
 </script>
 {% endblock %}

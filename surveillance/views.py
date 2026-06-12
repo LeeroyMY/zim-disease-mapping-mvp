@@ -234,9 +234,33 @@ def get_latest_cases(request):
         logging.getLogger('django').error(f"Error in get_latest_cases: {e}")
         return Response({'error': 'Failed to load latest cases data.'}, status=500)
 
+from django.contrib.gis.db.models import MultiPolygonField
+from django.db.models import Func
+from .serializers import AdministrativeBoundarySerializer, AdministrativeBoundarySimplifiedSerializer, HealthFacilitySerializer
+
+class SimplifyPreserveTopology(Func):
+    function = 'ST_SimplifyPreserveTopology'
+    output_field = MultiPolygonField()
+    arity = 2
+
 class AdministrativeBoundaryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AdministrativeBoundary.objects.all()
-    serializer_class = AdministrativeBoundarySerializer
+    
+    def get_queryset(self):
+        queryset = AdministrativeBoundary.objects.all()
+        tolerance = self.request.query_params.get('tolerance')
+        if tolerance:
+            try:
+                tol_val = float(tolerance)
+                queryset = queryset.annotate(geom_simplified=SimplifyPreserveTopology('geom', tol_val)).defer('geom')
+            except ValueError:
+                pass
+        return queryset
+
+    def get_serializer_class(self):
+        if self.request.query_params.get('tolerance'):
+            return AdministrativeBoundarySimplifiedSerializer
+        return AdministrativeBoundarySerializer
 
 class HealthFacilityViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = HealthFacility.objects.all()
