@@ -386,68 +386,78 @@ function showPopup(feature, coordinate) {
 }
 
 // Live polling
-let livePollInterval = null;
+let isPollingStarted = false;
+let currentPollTimeout = null;
 let lastPollTimestamp = new Date().toISOString();
+const BASE_POLL_INTERVAL = 30000; // 30 seconds
+let currentPollInterval = BASE_POLL_INTERVAL;
 
-function startLiveCasePolling() {
-    if (livePollInterval) clearInterval(livePollInterval);
-    livePollInterval = setInterval(() => {
-        fetch(`/api/latest-cases/?since=${encodeURIComponent(lastPollTimestamp)}`)
-            .then(res => {
-                if (!res.ok) {
-                    return res.json().then(err => { throw new Error(err.error || "Server Error"); }).catch(() => { throw new Error("Network/Server Error"); });
-                }
-                return res.json();
-            })
-            .then(data => {
-                if (data.error) {
-                    console.warn("Polling error response:", data.error);
-                    return;
-                }
-                const newCases = data.features || (data.results && data.results.features) || data.results || [];
-                if (newCases.length > 0) {
-                    // Update timestamp
-                    let latestTime = new Date(lastPollTimestamp).getTime();
-                    
-                    const deduplicatedNewCases = newCases.filter(newCase => {
-                        const existingIdx = allCases.findIndex(c => c.properties.id === newCase.properties.id);
-                        if (existingIdx === -1) {
-                            return true;
-                        }
-                        // Replace existing if new one is more recent (update)
-                        if (new Date(newCase.properties.updated_at) > new Date(allCases[existingIdx].properties.updated_at)) {
-                            allCases[existingIdx] = newCase;
-                        }
-                        return false;
-                    });
-                    
-                    deduplicatedNewCases.forEach(c => {
-                        allCases.push(c);
-                        if (c.properties.created_at) {
-                            const cTime = new Date(c.properties.created_at).getTime();
-                            if (cTime > latestTime) latestTime = cTime;
-                        }
-                        
-                        // Show brief notification popup for the new case
-                        if (c.geometry && c.geometry.coordinates) {
-                            const lngLat = c.geometry.coordinates;
-                            const popupHtml = `<div class="fw-bold text-success"><i class="bi bi-bell-fill"></i> New ${c.properties.disease_type.toUpperCase()} Case!</div>`;
-                            L.popup({closeOnClick: false, autoClose: true})
-                                .setLatLng([lngLat[1], lngLat[0]])
-                                .setContent(popupHtml)
-                                .openOn(mapInstance);
-                        }
-                    });
-                    
-                    lastPollTimestamp = new Date(latestTime).toISOString();
-                    
-                    // Dynamically expand the time slider range
+function pollLatestCases() {
+    // 4. Pause polling when the browser tab is hidden using document.visibilityState
+    if (document.visibilityState === 'hidden') {
+        // Skip this execution and try again shortly without hitting the server
+        currentPollTimeout = setTimeout(pollLatestCases, 5000);
+        return;
+    }
+
+    fetch(`/api/latest-cases/?since=${encodeURIComponent(lastPollTimestamp)}`)
+        .then(res => {
+            if (!res.ok) throw new Error("Server Error");
+            return res.json();
+        })
+        .then(data => {
+            // 7. Reset exponential backoff on success
+            currentPollInterval = BASE_POLL_INTERVAL;
+
+            if (data.error) {
+                console.warn("Polling error response:", data.error);
+                // Continue loop
+                currentPollTimeout = setTimeout(pollLatestCases, currentPollInterval);
+                return;
+            }
+            const newCases = data.features || (data.results && data.results.features) || data.results || [];
+            if (newCases.length > 0) {
+                // Update timestamp
+                let latestTime = new Date(lastPollTimestamp).getTime();
+                
+                const deduplicatedNewCases = newCases.filter(newCase => {
+                    const existingIdx = allCases.findIndex(c => c.properties.id === newCase.properties.id);
+                    if (existingIdx === -1) {
+                        return true;
+                    }
+                    if (new Date(newCase.properties.updated_at) > new Date(allCases[existingIdx].properties.updated_at)) {
+                        allCases[existingIdx] = newCase;
+                    }
+                    return false;
+                });
+                
+                let newlyAddedCount = 0;
+                deduplicatedNewCases.forEach(c => {
+                    newlyAddedCount++;
+                    allCases.push(c);
+                    if (c.properties.created_at) {
+                        const cTime = new Date(c.properties.created_at).getTime();
+                        if (cTime > latestTime) latestTime = cTime;
+                    }
+                    if (c.geometry && c.geometry.coordinates) {
+                        const lngLat = c.geometry.coordinates;
+                        const popupHtml = `<div class="fw-bold text-success"><i class="bi bi-bell-fill"></i> New ${c.properties.disease_type.toUpperCase()} Case!</div>`;
+                        L.popup({closeOnClick: false, autoClose: true})
+                            .setLatLng([lngLat[1], lngLat[0]])
+                            .setContent(popupHtml)
+                            .openOn(mapInstance);
+                    }
+                });
+                
+                // 8. Ensure the 'since' timestamp is updated correctly
+                lastPollTimestamp = new Date(latestTime).toISOString();
+                
+                if (newlyAddedCount > 0) {
                     if (latestTime > dateRange.max) {
                         const slider = document.getElementById('time-slider');
                         if (slider && slider.noUiSlider) {
                             let handles = slider.noUiSlider.get();
                             let rightHandle = parseInt(handles[1]);
-                            // Check if the user had the slider pegged to the far right
                             let wasPegged = rightHandle >= dateRange.max - 2000; 
                             
                             slider.noUiSlider.updateOptions({
@@ -463,14 +473,39 @@ function startLiveCasePolling() {
                         }
                     }
                     
-                    renderCases(); // Re-render everything
+                    // 9. Only refetch/render if new cases detected
+                    renderCases(); 
                     updateLegend();
                     updateDatasetTable();
                 }
-            })
-            .catch(err => console.error('Polling error:', err));
-    }, 10000); // 10 seconds
+            }
+            // Continue polling loop
+            currentPollTimeout = setTimeout(pollLatestCases, currentPollInterval);
+        })
+        .catch(err => {
+            console.error('Polling error:', err);
+            // 7. Add exponential backoff if repeated errors occur (max 5 minutes)
+            currentPollInterval = Math.min(currentPollInterval * 2, 300000);
+            currentPollTimeout = setTimeout(pollLatestCases, currentPollInterval);
+        });
 }
+
+function startLiveCasePolling() {
+    // 1. & 2. Ensure polling is started only once and prevent duplicates
+    if (isPollingStarted) return;
+    isPollingStarted = true;
+    
+    if (currentPollTimeout) clearTimeout(currentPollTimeout);
+    currentPollTimeout = setTimeout(pollLatestCases, currentPollInterval);
+}
+
+// 5. Resume polling aggressively when the tab becomes visible again
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && isPollingStarted) {
+        if (currentPollTimeout) clearTimeout(currentPollTimeout);
+        pollLatestCases();
+    }
+});
 
 function getFilteredFeatures() {
     const severity = document.getElementById('filter-severity').value;
