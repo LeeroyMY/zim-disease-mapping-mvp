@@ -227,7 +227,7 @@ function initMap() {
     mapInstance.addLayer(deckOverlay);
 
     // Fetch Administrative Boundaries
-    fetch('/api/boundaries/')
+    fetch('/api/boundaries/?tolerance=0.01')
         .then(res => res.json())
         .then(data => {
             allBoundaries = data.features || (data.results && data.results.features) || data.results || [];
