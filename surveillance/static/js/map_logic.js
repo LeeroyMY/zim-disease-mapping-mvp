@@ -273,7 +273,55 @@ function initMap() {
                 }
             }).addTo(mapInstance);
 
+
             populateBoundaryDropdowns();
+
+            // --- BUILD REGION INDEX ---
+            window.regionIndex = [];
+            const provinces = [];
+            const districts = [];
+
+            window.boundaryLayer.eachLayer(layer => {
+                const props = layer.feature.properties;
+                if (!props || !props.name) return;
+                
+                const level = (props.level || 'district').toLowerCase();
+                const rawName = String(props.name);
+                let normName = rawName.toLowerCase().replace(/\s+/g, ' ').trim();
+                normName = normName.replace(/\s+province$/, ''); // normalize province names
+
+                const entry = {
+                    normalisedName: normName,
+                    originalName: rawName,
+                    level: level,
+                    feature: layer.feature,
+                    bounds: layer.getBounds(),
+                    layer: layer,
+                    id: String(props.id || props.code || '')
+                };
+
+                window.regionIndex.push(entry);
+                if (level === 'province') {
+                    provinces.push(entry);
+                } else {
+                    districts.push(entry);
+                }
+            });
+
+            // Link districts to parent provinces using point-in-polygon
+            districts.forEach(dist => {
+                try {
+                    const center = turf.centerOfMass(dist.feature);
+                    for (const prov of provinces) {
+                        if (turf.booleanPointInPolygon(center, prov.feature)) {
+                            dist.parentProvince = prov;
+                            break;
+                        }
+                    }
+                } catch(e) {}
+            });
+            // --------------------------
+
         });
 
     mapInstance.on('click', function(e) {
@@ -786,32 +834,9 @@ function initMapSearch() {
         dropdown.style.display = 'none';
         searchInput.value = label;
 
-        // Try to match search result with Province or District dropdowns
-        let matched = false;
-        const provSelect = document.getElementById('province-select');
-        const distSelect = document.getElementById('district-select');
-        
-        if (provSelect) {
-            for (let i = 0; i < provSelect.options.length; i++) {
-                if (provSelect.options[i].text.toLowerCase() === label.toLowerCase()) {
-                    $(provSelect).val(provSelect.options[i].value).trigger('change.select2');
-                    // Manually trigger the select event since change.select2 doesn't always trigger it for listeners
-                    $(provSelect).trigger({ type: 'select2:select' });
-                    matched = true;
-                    break;
-                }
-            }
-        }
-        
-        if (!matched && distSelect) {
-            for (let i = 0; i < distSelect.options.length; i++) {
-                if (distSelect.options[i].text.toLowerCase() === label.toLowerCase()) {
-                    $(distSelect).val(distSelect.options[i].value).trigger('change.select2');
-                    $(distSelect).trigger({ type: 'select2:select' });
-                    matched = true;
-                    break;
-                }
-            }
+        // Match region bounds
+        if (window.applyRegionFilter) {
+            window.applyRegionFilter(label);
         }
     }
 
@@ -1448,80 +1473,109 @@ function populateBoundaryDropdowns() {
         });
 }
 
-function filterBoundaryLayer(provId, distId) {
-    if (!window.boundaryLayer) return;
 
-    window.activeRegionPolygon = null;
-    let primaryFeature = null;
+// unified region filter method
+window.applyRegionFilter = function(searchString, skipDropdownUpdate = false) {
+    if (!window.regionIndex || window.regionIndex.length === 0) return;
 
-    // First pass: find the primary selected boundary
-    window.boundaryLayer.eachLayer(layer => {
-        const p = layer.feature.properties;
-        if (distId && distId !== "") {
-            if (String(p.id) === String(distId)) primaryFeature = layer.feature;
-        } else if (provId && provId !== "") {
-            if (String(p.id) === String(provId)) primaryFeature = layer.feature;
+    if (!searchString || searchString.trim() === '' || searchString.toLowerCase() === 'all zimbabwe') {
+        window.activeRegionPolygon = null;
+        window.boundaryLayer.eachLayer(layer => {
+            if (!mapInstance.hasLayer(layer)) mapInstance.addLayer(layer);
+            window.boundaryLayer.resetStyle(layer);
+        });
+        mapInstance.flyTo([-19.0154, 29.1549], 6, {duration: 1.5});
+        renderCases();
+        if (!skipDropdownUpdate) {
+            $('#province-select').val('').trigger('change.select2');
+            $('#district-select').val('').trigger('change.select2');
         }
-    });
+        return;
+    }
 
-    window.activeRegionPolygon = primaryFeature;
+    let normSearch = String(searchString).toLowerCase().replace(/\s+/g, ' ').trim();
+    normSearch = normSearch.replace(/\s+province$/, '');
 
-    // Second pass: show the primary boundary and (if province) its districts
+    let matchedRegion = window.regionIndex.find(r => r.id === searchString);
+    if (!matchedRegion) {
+        matchedRegion = window.regionIndex.find(r => r.normalisedName === normSearch || r.originalName.toLowerCase() === normSearch);
+    }
+    
+    if (!matchedRegion) {
+        matchedRegion = window.regionIndex.find(r => r.normalisedName.includes(normSearch));
+    }
+
+    if (!matchedRegion) {
+        const fb = document.getElementById('region-search-input');
+        if (fb) {
+            const origColor = fb.style.borderColor;
+            const origPlace = fb.placeholder;
+            fb.style.borderColor = 'red';
+            fb.placeholder = 'Region not found';
+            fb.value = '';
+            setTimeout(() => {
+                fb.style.borderColor = origColor;
+                fb.placeholder = origPlace;
+            }, 2000);
+        }
+        return;
+    }
+
+    if (matchedRegion.bounds.isValid()) {
+        mapInstance.flyToBounds(matchedRegion.bounds, {padding: [40, 40], maxZoom: 10, duration: 1.5});
+    }
+
     window.boundaryLayer.eachLayer(layer => {
         let show = false;
         
-        if (primaryFeature) {
-            if (layer.feature === primaryFeature) {
-                show = true;
-            } else if (provId && provId !== "" && (!distId || distId === "")) {
-                // If province is selected, also show districts that fall within it
-                const p = layer.feature.properties;
-                if (p.level === 'district') {
-                    try {
-                        const center = turf.centerOfMass(layer.feature);
-                        if (turf.booleanPointInPolygon(center, primaryFeature)) {
-                            show = true;
-                        }
-                    } catch(e) {
-                        // fallback
-                    }
+        if (matchedRegion.level === 'province') {
+            if (layer === matchedRegion.layer) show = true;
+            else {
+                const districtEntry = window.regionIndex.find(r => r.layer === layer);
+                if (districtEntry && districtEntry.parentProvince === matchedRegion) {
+                    show = true;
                 }
             }
         } else {
-            show = true; // No region selected, show all boundaries
+            if (layer === matchedRegion.layer) show = true;
         }
-        
+
         if (show) {
-            if (!mapInstance.hasLayer(layer)) {
-                mapInstance.addLayer(layer);
+            if (!mapInstance.hasLayer(layer)) mapInstance.addLayer(layer);
+            if (layer === matchedRegion.layer) {
+                layer.setStyle({weight: 3, color: '#ffc107', fillOpacity: 0.1});
+            } else {
+                window.boundaryLayer.resetStyle(layer);
             }
         } else {
-            if (mapInstance.hasLayer(layer)) {
-                mapInstance.removeLayer(layer);
-            }
+            if (mapInstance.hasLayer(layer)) mapInstance.removeLayer(layer);
         }
     });
 
-    // Zoom to fit bounds
-    let bounds = L.latLngBounds();
-    window.boundaryLayer.eachLayer(layer => {
-        if (mapInstance.hasLayer(layer)) {
-            if (layer.getBounds) {
-                bounds.extend(layer.getBounds());
-            }
-        }
-    });
-    
-    // Only zoom if we have a specific selection AND bounds are valid
-    if (bounds.isValid() && (distId !== "" || provId !== "")) {
-        mapInstance.flyToBounds(bounds, {padding: [50, 50], maxZoom: 10, duration: 1.5});
-    } else if (distId === "" && provId === "") {
-        // Reset view to default if no region selected
-        mapInstance.flyTo([-19.0154, 29.1549], 6, {duration: 1.5});
-    }
-
-    // Update the cases displayed on the map based on the newly selected region boundary
+    window.activeRegionPolygon = matchedRegion.feature;
     renderCases();
+
+    if (!skipDropdownUpdate) {
+        if (matchedRegion.level === 'province') {
+            $('#province-select').val(matchedRegion.id).trigger('change.select2');
+            $('#district-select').val('').trigger('change.select2');
+        } else {
+            if (matchedRegion.parentProvince) {
+                $('#province-select').val(matchedRegion.parentProvince.id).trigger('change.select2');
+            }
+            $('#district-select').val(matchedRegion.id).trigger('change.select2');
+        }
+    }
+};
+
+function filterBoundaryLayer(provId, distId) {
+    if (distId) {
+        window.applyRegionFilter(distId, true);
+    } else if (provId) {
+        window.applyRegionFilter(provId, true);
+    } else {
+        window.applyRegionFilter('', true);
+    }
 }
 
 // Interactive Data Table View
