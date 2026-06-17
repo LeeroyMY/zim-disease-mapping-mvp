@@ -11,6 +11,7 @@ let dateRange = { min: 0, max: Date.now() };
 let currentDisplayMode = 'cluster';
 let spatialQueryEnabled = false;
 let spatialQueryMarker = null;
+window.activeRegionPolygon = null;
 
 function getCookie(name) {
     let cookieValue = null;
@@ -550,6 +551,18 @@ function getFilteredFeatures() {
             }
         }
 
+        // Add regional boundary filtering
+        if (geoMatch && window.activeRegionPolygon && c.geometry && c.geometry.coordinates) {
+            try {
+                const pt = turf.point(c.geometry.coordinates);
+                if (!turf.booleanPointInPolygon(pt, window.activeRegionPolygon)) {
+                    geoMatch = false;
+                }
+            } catch(e) {
+                geoMatch = true; // fail open
+            }
+        }
+
         let severityMatch = true;
         if (severity && severity !== '') severityMatch = (p.severity == severity);
 
@@ -772,6 +785,34 @@ function initMapSearch() {
 
         dropdown.style.display = 'none';
         searchInput.value = label;
+
+        // Try to match search result with Province or District dropdowns
+        let matched = false;
+        const provSelect = document.getElementById('province-select');
+        const distSelect = document.getElementById('district-select');
+        
+        if (provSelect) {
+            for (let i = 0; i < provSelect.options.length; i++) {
+                if (provSelect.options[i].text.toLowerCase() === label.toLowerCase()) {
+                    $(provSelect).val(provSelect.options[i].value).trigger('change.select2');
+                    // Manually trigger the select event since change.select2 doesn't always trigger it for listeners
+                    $(provSelect).trigger({ type: 'select2:select' });
+                    matched = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!matched && distSelect) {
+            for (let i = 0; i < distSelect.options.length; i++) {
+                if (distSelect.options[i].text.toLowerCase() === label.toLowerCase()) {
+                    $(distSelect).val(distSelect.options[i].value).trigger('change.select2');
+                    $(distSelect).trigger({ type: 'select2:select' });
+                    matched = true;
+                    break;
+                }
+            }
+        }
     }
 
     function renderDropdown(results) {
@@ -1410,14 +1451,44 @@ function populateBoundaryDropdowns() {
 function filterBoundaryLayer(provId, distId) {
     if (!window.boundaryLayer) return;
 
+    window.activeRegionPolygon = null;
+    let primaryFeature = null;
+
+    // First pass: find the primary selected boundary
     window.boundaryLayer.eachLayer(layer => {
         const p = layer.feature.properties;
-        let show = true;
-        
         if (distId && distId !== "") {
-            show = (String(p.id) === String(distId));
+            if (String(p.id) === String(distId)) primaryFeature = layer.feature;
         } else if (provId && provId !== "") {
-            show = (String(p.id) === String(provId));
+            if (String(p.id) === String(provId)) primaryFeature = layer.feature;
+        }
+    });
+
+    window.activeRegionPolygon = primaryFeature;
+
+    // Second pass: show the primary boundary and (if province) its districts
+    window.boundaryLayer.eachLayer(layer => {
+        let show = false;
+        
+        if (primaryFeature) {
+            if (layer.feature === primaryFeature) {
+                show = true;
+            } else if (provId && provId !== "" && (!distId || distId === "")) {
+                // If province is selected, also show districts that fall within it
+                const p = layer.feature.properties;
+                if (p.level === 'district') {
+                    try {
+                        const center = turf.centerOfMass(layer.feature);
+                        if (turf.booleanPointInPolygon(center, primaryFeature)) {
+                            show = true;
+                        }
+                    } catch(e) {
+                        // fallback
+                    }
+                }
+            }
+        } else {
+            show = true; // No region selected, show all boundaries
         }
         
         if (show) {
@@ -1448,6 +1519,9 @@ function filterBoundaryLayer(provId, distId) {
         // Reset view to default if no region selected
         mapInstance.flyTo([-19.0154, 29.1549], 6, {duration: 1.5});
     }
+
+    // Update the cases displayed on the map based on the newly selected region boundary
+    renderCases();
 }
 
 // Interactive Data Table View

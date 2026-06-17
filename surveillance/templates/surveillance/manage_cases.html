@@ -8,11 +8,9 @@
         <h2 class="fw-bold m-0"><i class="bi bi-briefcase-fill text-primary me-2"></i> Case Management</h2>
         
         <div class="d-flex gap-2">
-            {% if user.is_superuser %}
-            <a href="{% url 'dashboard_root' %}" class="btn btn-dark rounded-pill shadow-sm fw-bold">
-                <i class="bi bi-house-door-fill me-2"></i> Return to Map
+            <a href="{% url 'login' %}" class="btn btn-dark rounded-pill shadow-sm fw-bold">
+                <i class="bi bi-house-door-fill me-2"></i> Home
             </a>
-            {% endif %}
             
             <form action="{% url 'logout' %}" method="post" class="m-0">
                 {% csrf_token %}
@@ -516,24 +514,56 @@
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Locating...';
         btn.disabled = true;
 
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
+        let watchId;
+        let timeoutId;
+        let bestPosition = null;
+
+        function finishLocating() {
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+            if (timeoutId) clearTimeout(timeoutId);
+            
+            if (bestPosition) {
                 const lngLat = { 
-                    lng: position.coords.longitude, 
-                    lat: position.coords.latitude 
+                    lng: bestPosition.coords.longitude, 
+                    lat: bestPosition.coords.latitude 
                 };
-                reportMap.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 20 });
+                reportMap.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 18 });
                 placePatientMarker(lngLat);
+            } else {
+                alert('Unable to retrieve an accurate location. Please ensure GPS is enabled.');
+            }
+            
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+
+        // Wait up to 15 seconds to get the best possible GPS lock
+        timeoutId = setTimeout(() => {
+            finishLocating();
+        }, 15000);
+
+        watchId = navigator.geolocation.watchPosition(
+            (position) => {
+                // Keep track of the most accurate position found
+                if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
+                    bestPosition = position;
+                }
                 
-                btn.innerHTML = originalText;
-                btn.disabled = false;
+                // If accuracy is great (e.g., within 20 meters), stop waiting and use it
+                if (position.coords.accuracy <= 20) {
+                    finishLocating();
+                }
             },
             (error) => {
-                alert('Unable to retrieve your location: ' + error.message);
-                btn.innerHTML = originalText;
-                btn.disabled = false;
+                if (!bestPosition) {
+                    alert('Unable to retrieve your location: ' + error.message);
+                    if (watchId) navigator.geolocation.clearWatch(watchId);
+                    if (timeoutId) clearTimeout(timeoutId);
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
             },
-            { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     });
 
