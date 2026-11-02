@@ -1449,6 +1449,7 @@ document.getElementById('btnClearTBCases')?.addEventListener('click', function (
 
     fetch('/api/cases/clear-tb/', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
             'X-CSRFToken': getCookie('csrftoken'),
             'Content-Type': 'application/json'
@@ -1456,6 +1457,9 @@ document.getElementById('btnClearTBCases')?.addEventListener('click', function (
     })
         .then(async res => {
             const text = await res.text();
+            if (res.redirected || (text && text.trim().startsWith('<!DOCTYPE')) || res.status === 401) {
+                throw new Error("Your login session has expired. Please refresh the page and sign in again.");
+            }
             try {
                 return JSON.parse(text);
             } catch (e) {
@@ -1507,6 +1511,7 @@ document.getElementById('btnSubmitUpload')?.addEventListener('click', function (
 
     fetch('/api/upload/', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
             'X-CSRFToken': getCookie('csrftoken')
         },
@@ -1514,6 +1519,9 @@ document.getElementById('btnSubmitUpload')?.addEventListener('click', function (
     })
         .then(async res => {
             const text = await res.text();
+            if (res.redirected || (text && text.trim().startsWith('<!DOCTYPE')) || res.status === 401) {
+                throw new Error("Your login session has expired or authentication failed. Please refresh the page and sign in again.");
+            }
             let data;
             try {
                 data = JSON.parse(text);
@@ -2471,6 +2479,7 @@ async function updateCorrelationAnalysis() {
     try {
         const response = await fetch('/api/spatial-clustering/', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken')

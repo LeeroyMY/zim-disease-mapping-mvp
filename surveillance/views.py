@@ -13,6 +13,7 @@ import random
 
 import newick
 from datetime import datetime, date, timedelta
+from functools import wraps
 import math
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
@@ -26,6 +27,22 @@ from rest_framework.response import Response
 from django.apps import apps
 from django.core.cache import cache
 import logging
+
+def api_auth_required(view_func):
+    """
+    Ensures the user is authenticated for API endpoints.
+    Returns HTTP 401 JSON instead of redirecting to login HTML.
+    """
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'unauthorized',
+                'message': 'Your session has expired. Please refresh the page and sign in again.'
+            }, status=401)
+        return view_func(request, *args, **kwargs)
+    return _wrapped_view
 
 from django.db import connection
 from itertools import chain
@@ -595,7 +612,7 @@ def _build_instance(row, ModelClass, facility_cache, available_facilities):
         return None
 
 
-@login_required
+@api_auth_required
 def upload_dataset(request):
     """
     Handles the asynchronous ingestion of epidemiological datasets in various formats.
@@ -738,7 +755,7 @@ def upload_dataset(request):
              
     return JsonResponse({'status': 'error', 'message': 'Invalid request'}, status=400)
 
-@login_required
+@api_auth_required
 @api_view(['POST'])
 def clear_tb_cases_api(request):
     """
@@ -762,7 +779,7 @@ def clear_tb_cases_api(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-@login_required
+@api_auth_required
 def report_case(request):
     """
     Handles individual case reports submitted via the frontend UI.

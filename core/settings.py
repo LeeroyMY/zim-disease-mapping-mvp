@@ -63,6 +63,9 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
 
 # Application definition
 
@@ -193,10 +196,12 @@ LOGGING = {
     },
 }
 
-SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+# Database-backed sessions shared across all Gunicorn workers
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_COOKIE_AGE = 1209600 # 2 weeks
+SESSION_SAVE_EVERY_REQUEST = True
 
-# Use local memory cache for sessions so restarting the server logs everyone out
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
