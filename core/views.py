@@ -1,13 +1,16 @@
 from django.shortcuts import redirect
 from django.contrib import messages
+from django.http import JsonResponse
 
 def csrf_failure(request, reason=""):
     """
     Custom CSRF failure view.
-    Instead of showing a 403 Forbidden page, redirect the user back to the login page
-    with a warning message that their session expired or they need to refresh.
+    For API endpoints, returns a clean JSON error response so the frontend displays
+    the exact cause. For regular browser page submissions, redirects back to login.
     """
-    # Check if the user is somehow authenticated but submitting a bad token
+    if request.path.startswith('/api/') or request.headers.get('x-requested-with') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', ''):
+        return JsonResponse({'status': 'error', 'message': f'CSRF validation failed: {reason}. Please refresh the page.'}, status=403)
+        
     if request.user.is_authenticated:
         messages.warning(request, "Your session was interrupted or opened in another tab. Please try your action again.")
         return redirect('dashboard_root')

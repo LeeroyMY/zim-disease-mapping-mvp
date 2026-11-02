@@ -12,7 +12,8 @@ from .views import (
     manage_cases,
     edit_case,
     get_disease_data,
-    calculate_spatial_clustering
+    calculate_spatial_clustering,
+    clear_tb_cases_api
 )
 
 router = DefaultRouter()
@@ -28,6 +29,7 @@ urlpatterns = [
     
     # Custom API endpoints
     path('api/upload/', upload_dataset, name='upload_dataset'),
+    path('api/cases/clear-tb/', clear_tb_cases_api, name='clear_tb_cases_api'),
     path('api/report/', report_case, name='report_case'),
     path('api/table-cases/<str:disease_type>/', get_disease_data, name='get_disease_data'),
     path('api/spatial-clustering/', calculate_spatial_clustering, name='spatial_clustering'),

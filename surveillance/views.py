@@ -642,11 +642,23 @@ def upload_dataset(request):
                     instances_to_create.clear()
 
             import io
-            if filename.endswith('.csv') or filename.endswith('.tsv'):
+            if filename.endswith('.csv') or filename.endswith('.tsv') or filename.endswith('.txt'):
                 try:
-                    decoded_file = io.TextIOWrapper(uploaded_file, encoding='utf-8-sig', errors='replace')
+                    raw_bytes = uploaded_file.read()
+                    if isinstance(raw_bytes, bytes):
+                        content_str = raw_bytes.decode('utf-8-sig', errors='replace')
+                    else:
+                        content_str = str(raw_bytes)
+                    
                     delimiter = '\t' if filename.endswith('.tsv') else ','
-                    reader = csv.DictReader(decoded_file, delimiter=delimiter)
+                    # Delimiter auto-detection if file is tab or semicolon separated
+                    sample_line = content_str[:2000].splitlines()[0] if content_str else ''
+                    if '\t' in sample_line and ',' not in sample_line:
+                        delimiter = '\t'
+                    elif ';' in sample_line and ',' not in sample_line:
+                        delimiter = ';'
+                        
+                    reader = csv.DictReader(io.StringIO(content_str), delimiter=delimiter)
                     for row in reader:
                         process_row(row)
                         count += 1
@@ -662,7 +674,17 @@ def upload_dataset(request):
                         process_row(row.to_dict())
                         count += 1
                 except Exception as e:
-                    return JsonResponse({'status': 'error', 'message': f'Failed to parse spreadsheet: {str(e)}'}, status=400)
+                    # Fallback: file may be a CSV named with spreadsheet extension
+                    try:
+                        uploaded_file.seek(0)
+                        raw_bytes = uploaded_file.read()
+                        content_str = raw_bytes.decode('utf-8-sig', errors='replace') if isinstance(raw_bytes, bytes) else str(raw_bytes)
+                        reader = csv.DictReader(io.StringIO(content_str))
+                        for row in reader:
+                            process_row(row)
+                            count += 1
+                    except Exception:
+                        return JsonResponse({'status': 'error', 'message': f'Failed to parse spreadsheet: {str(e)}'}, status=400)
                         
             elif filename.endswith('.geojson'):
                 try:
@@ -699,7 +721,15 @@ def upload_dataset(request):
                 return JsonResponse({'status': 'error', 'message': f'Unsupported file format: {filename}'}, status=400)
                 
             if instances_to_create:
-                ModelClass.objects.bulk_create(instances_to_create)
+                try:
+                    ModelClass.objects.bulk_create(instances_to_create)
+                except Exception as db_err:
+                    logging.getLogger('django').error(f"Bulk create error, saving individually: {db_err}")
+                    for inst in instances_to_create:
+                        try:
+                            inst.save()
+                        except Exception as row_err:
+                            logging.getLogger('django').error(f"Row save error: {row_err}")
             
             cache.delete('all_cases_geojson')
             return JsonResponse({'status': 'success', 'message': f'Imported {count} records.', 'records_imported': count})
@@ -707,6 +737,30 @@ def upload_dataset(request):
              return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
              
     return JsonResponse({'status': 'error', 'message': 'Invalid request'}, status=400)
+
+@login_required
+@api_view(['POST'])
+def clear_tb_cases_api(request):
+    """
+    Endpoint to delete all TB cases and invalidate cache.
+    """
+    try:
+        from .models import TBCase, GenericDiseaseCase
+        count_tb = TBCase.objects.count()
+        TBCase.objects.all().delete()
+        
+        count_generic = GenericDiseaseCase.objects.filter(disease_type__in=['tb', 'tuberculosis']).count()
+        GenericDiseaseCase.objects.filter(disease_type__in=['tb', 'tuberculosis']).delete()
+        
+        cache.delete('all_cases_geojson')
+        total_deleted = count_tb + count_generic
+        return JsonResponse({
+            'status': 'success', 
+            'message': f'Successfully cleared {total_deleted} TB records from the database.',
+            'records_deleted': total_deleted
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 @login_required
 def report_case(request):

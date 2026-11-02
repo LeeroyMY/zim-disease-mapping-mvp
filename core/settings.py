@@ -40,11 +40,22 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver,
 
 CSRF_TRUSTED_ORIGINS = [
     'https://infectious-diseases-mapping.onrender.com',
+    'https://*.onrender.com',
+    'http://*.onrender.com',
+    'http://localhost',
+    'http://127.0.0.1',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
 ]
 # If the user provides extra allowed hosts, try to add them to CSRF trusted origins to be safe
 for host in ALLOWED_HOSTS:
     if host and host != '*' and host not in ['localhost', '127.0.0.1', 'testserver']:
         CSRF_TRUSTED_ORIGINS.append(f"https://{host}")
+
+# Reverse proxy SSL headers for Render & Docker environments
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
 
 # Production Security Headers
 SECURE_BROWSER_XSS_FILTER = True
@@ -57,6 +68,7 @@ SESSION_COOKIE_SECURE = not DEBUG
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10240000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600 # 100MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600 # 100MB
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -157,8 +169,6 @@ if not DEBUG:
     STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 
-# (Leaflet configuration removed, MapLibre is configured on the frontend)
-
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
@@ -177,7 +187,7 @@ LOGGING = {
     'loggers': {
         'django.security.csrf': {
             'handlers': ['console'],
-            'level': 'ERROR', # Only log actual CSRF CRITICAL errors, not ordinary FORBIDDEN warnings which are just INFO/WARNING
+            'level': 'ERROR',
             'propagate': False,
         },
     },

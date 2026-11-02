@@ -30,6 +30,19 @@
                         </select>
                     </div>
 
+                    <div id="tbClearActionBox" class="p-3 mb-4 rounded-3 border border-danger-subtle bg-white text-start d-none shadow-sm">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <strong class="small text-danger d-block"><i class="bi bi-trash3-fill me-1"></i> Database Management</strong>
+                                <span class="text-muted" style="font-size: 11px;">Wipe existing TB cases before uploading a new dataset.</span>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger fw-bold" id="btnClearTBCases">
+                                <span id="clearTBSpinner" class="spinner-border spinner-border-sm d-none me-1"></span> Wipe TB Database
+                            </button>
+                        </div>
+                        <div id="clearTBFeedback" class="small mt-2 d-none"></div>
+                    </div>
+
                     <div id="diseaseWarningBox" class="alert alert-warning text-start small d-none mb-4">
                         <strong><i class="bi bi-exclamation-triangle-fill"></i> Data Integrity Warning</strong><br>
                         Your dataset must map correctly to the selected disease format.<br>

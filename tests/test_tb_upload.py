@@ -96,3 +96,8 @@ class TBUploadAndMappingTestCase(TestCase):
         self.assertIn('num_clusters', cluster_data)
         self.assertIn('cluster_percentage', cluster_data)
 
+        # Test clear TB cases endpoint
+        clear_res = self.client.post('/api/cases/clear-tb/')
+        self.assertEqual(clear_res.status_code, 200)
+        self.assertEqual(TBCase.objects.count(), 0)
+

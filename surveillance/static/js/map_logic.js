@@ -248,8 +248,8 @@ function initMap() {
             sidePanel.insertBefore(timeSlider, actionButtons);
         }
     });
-    // High-performance basemaps with NO API key requirements or watermarks
-    const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+    // High-performance basemaps with NO API key requirements or watermarks (hl=en forces English labels)
+    const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}', {
         attribution: '&copy; Google Maps',
         subdomains: ['0', '1', '2', '3'],
         maxZoom: 20
@@ -258,7 +258,7 @@ function initMap() {
         attribution: 'Tiles &copy; Esri',
         maxZoom: 19
     });
-    const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', {
         attribution: '&copy; Google Maps',
         subdomains: ['0', '1', '2', '3'],
         maxZoom: 20
@@ -1417,11 +1417,69 @@ function updateSliderLabels(min, max) {
 document.getElementById('uploadDiseaseSelection')?.addEventListener('change', function () {
     const val = this.value;
     const warningBox = document.getElementById('diseaseWarningBox');
-    if (['cholera', 'tb', 'hiv'].includes(val)) {
-        warningBox.classList.remove('d-none');
-    } else {
-        warningBox.classList.add('d-none');
+    if (warningBox) {
+        if (['cholera', 'tb', 'hiv'].includes(val)) {
+            warningBox.classList.remove('d-none');
+        } else {
+            warningBox.classList.add('d-none');
+        }
     }
+    const tbBox = document.getElementById('tbClearActionBox');
+    if (tbBox) {
+        if (val === 'tb') {
+            tbBox.classList.remove('d-none');
+        } else {
+            tbBox.classList.add('d-none');
+        }
+    }
+});
+
+document.getElementById('btnClearTBCases')?.addEventListener('click', function () {
+    if (!confirm("Are you sure you want to delete ALL Tuberculosis (TB) cases from the database? This cannot be undone.")) {
+        return;
+    }
+    const btn = this;
+    const spinner = document.getElementById('clearTBSpinner');
+    const feedback = document.getElementById('clearTBFeedback');
+    btn.disabled = true;
+    spinner?.classList.remove('d-none');
+    feedback.className = 'small mt-2 alert alert-info py-1 px-2';
+    feedback.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Deleting TB cases...';
+    feedback.classList.remove('d-none');
+
+    fetch('/api/cases/clear-tb/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+        .then(async res => {
+            const text = await res.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                throw new Error(`Server returned status ${res.status}: ${text.substring(0, 150)}`);
+            }
+        })
+        .then(data => {
+            btn.disabled = false;
+            spinner?.classList.add('d-none');
+            if (data.status === 'success') {
+                feedback.className = 'small mt-2 alert alert-success py-1 px-2';
+                feedback.innerHTML = `<i class="bi bi-check-circle me-1"></i> ${data.message || 'All TB cases deleted.'}`;
+                window.loadAllCases();
+            } else {
+                feedback.className = 'small mt-2 alert alert-danger py-1 px-2';
+                feedback.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i> ${data.message || 'Failed to delete.'}`;
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            spinner?.classList.add('d-none');
+            feedback.className = 'small mt-2 alert alert-danger py-1 px-2';
+            feedback.innerText = err.message || 'Error communicating with server.';
+        });
 });
 
 document.getElementById('btnSubmitUpload')?.addEventListener('click', function () {
@@ -1454,7 +1512,19 @@ document.getElementById('btnSubmitUpload')?.addEventListener('click', function (
         },
         body: formData
     })
-        .then(res => res.json())
+        .then(async res => {
+            const text = await res.text();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                throw new Error(`Upload error (${res.status}): ${text.substring(0, 150)}`);
+            }
+            if (!res.ok) {
+                throw new Error(data.message || `Upload failed with status ${res.status}`);
+            }
+            return data;
+        })
         .then(data => {
             document.getElementById('uploadSpinner').classList.add('d-none');
             if (data.status === 'success') {
@@ -1476,7 +1546,7 @@ document.getElementById('btnSubmitUpload')?.addEventListener('click', function (
         .catch(err => {
             document.getElementById('uploadSpinner').classList.add('d-none');
             feedback.classList.replace('alert-info', 'alert-danger');
-            feedback.innerText = "Server error during upload.";
+            feedback.innerText = err.message || "Server error during upload.";
             console.error(err);
         });
 });
