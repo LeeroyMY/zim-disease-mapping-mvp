@@ -35,8 +35,10 @@ let datasetsByDisease = {}; // store data for downloads
 // Distinct Variant Color Palette
 const COLORS = {
     'cholera': { base: '#0dcaf0', 'O1 Ogawa': '#0a58ca', 'O1 Inaba': '#3d8bfd', 'default': '#0dcaf0' },
-    'tb': { base: '#dc3545', 'MDR-TB': '#842029', 'XDR-TB': '#5c161d', 'default': '#dc3545' },
-    'hiv': { base: '#6f42c1', 'HIV-1': '#4a2b82', 'HIV-2': '#e0cffc', 'default': '#6f42c1' }
+    'tb': { base: '#dc2626', 'RR-TB': '#dc2626', 'Rif-Sensitive': '#10b981', 'MDR-TB': '#991b1b', 'XDR-TB': '#5c161d', 'default': '#dc3545' },
+    'hiv': { base: '#6f42c1', 'HIV-1': '#4a2b82', 'HIV-2': '#e0cffc', 'default': '#6f42c1' },
+    'malaria': { base: '#f59e0b', 'P. falciparum': '#d97706', 'P. vivax': '#b45309', 'default': '#f59e0b' },
+    'typhoid': { base: '#8b5cf6', 'S. Typhi': '#6d28d9', 'default': '#8b5cf6' }
 };
 
 function stringToColor(str) {
@@ -73,12 +75,12 @@ function getColorForCase(disease, variant) {
 function updateLegend() {
     const legendContent = document.getElementById('dynamic-legend-content');
     let html = '';
-    
+
     visibleDiseases.forEach(d => {
         if (COLORS[d]) {
             const group = COLORS[d];
             html += `<div class="mb-2 fw-bold text-uppercase" style="color: ${group.base}">${d}</div>`;
-            
+
             Object.keys(group).forEach(key => {
                 if (key === 'base') return;
                 const label = key === 'default' ? 'Unspecified Strain' : key;
@@ -100,7 +102,7 @@ function updateLegend() {
             `;
         }
     });
-    
+
     legendContent.innerHTML = html || 'No data selected';
 }
 
@@ -112,11 +114,53 @@ const DISEASE_ICONS = {
     'tb': 'bi-lungs'
 };
 
+window.populateVariantDropdown = function (selectedDisease) {
+    const variantSelect = document.getElementById('global-variant-select');
+    if (!variantSelect) return;
+
+    if (!selectedDisease) {
+        variantSelect.innerHTML = '<option value="">All Variants</option>';
+        variantSelect.disabled = true;
+        return;
+    }
+
+    variantSelect.disabled = false;
+    variantSelect.innerHTML = '<option value="">All Variants</option>';
+
+    const variantsSet = new Set();
+    if (COLORS[selectedDisease]) {
+        Object.keys(COLORS[selectedDisease]).forEach(variant => {
+            if (variant !== 'base' && variant !== 'default') {
+                variantsSet.add(variant);
+            }
+        });
+    }
+    if (Array.isArray(allCases)) {
+        allCases.forEach(c => {
+            const d = (c.properties?.disease_type || '').toLowerCase();
+            const v = c.properties?.variant;
+            if (d === selectedDisease.toLowerCase() && v && v !== 'Unspecified') {
+                variantsSet.add(v);
+            }
+        });
+    }
+
+    variantsSet.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.innerText = v;
+        if (visibleVariants[selectedDisease] === v) {
+            opt.selected = true;
+        }
+        variantSelect.appendChild(opt);
+    });
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize visibleDiseases array based on options
     const diseaseSelect = document.getElementById('global-disease-select');
     const variantSelect = document.getElementById('global-variant-select');
-    
+
     if (diseaseSelect) {
         const diseaseOptions = Array.from(diseaseSelect.options);
         diseaseOptions.forEach(opt => {
@@ -126,31 +170,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        diseaseSelect.addEventListener('change', function() {
+        diseaseSelect.addEventListener('change', function () {
             const selectedDisease = this.value;
             if (selectedDisease === "") {
                 // All diseases selected
                 visibleDiseases = diseaseOptions.filter(o => o.value).map(o => o.value);
-                variantSelect.innerHTML = '<option value="">All Variants</option>';
-                variantSelect.disabled = true;
+                window.populateVariantDropdown("");
                 // Clear all variant filters
                 visibleDiseases.forEach(d => visibleVariants[d] = "");
             } else {
                 // Specific disease selected
                 visibleDiseases = [selectedDisease];
-                variantSelect.disabled = false;
-                variantSelect.innerHTML = '<option value="">All Variants</option>';
-                // Populate variants for this disease if any
-                if (COLORS[selectedDisease]) {
-                    Object.keys(COLORS[selectedDisease]).forEach(variant => {
-                        if (variant !== 'base' && variant !== 'default') {
-                            const opt = document.createElement('option');
-                            opt.value = variant;
-                            opt.innerText = variant;
-                            variantSelect.appendChild(opt);
-                        }
-                    });
-                }
+                window.populateVariantDropdown(selectedDisease);
                 // Clear other variant filters
                 Object.keys(visibleVariants).forEach(d => visibleVariants[d] = "");
             }
@@ -160,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (variantSelect) {
-            variantSelect.addEventListener('change', function() {
+            variantSelect.addEventListener('change', function () {
                 const selectedDisease = diseaseSelect.value;
                 if (selectedDisease) {
                     visibleVariants[selectedDisease] = this.value;
@@ -175,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initMapSearch();
 });
 
-window.toggleDiseaseFilter = function(disease, element) {
+window.toggleDiseaseFilter = function (disease, element) {
     // Deprecated: Replaced by global dropdown
 };
 
@@ -188,12 +219,12 @@ function initMap() {
     }).setView([-19.0154, 29.1549], 6);
 
     // Fullscreen UX Handling
-    mapInstance.on('enterFullscreen', function() {
+    mapInstance.on('enterFullscreen', function () {
         const mapContainer = document.getElementById('mainmap');
         const legend = document.querySelector('.map-legend-overlay');
         const filters = document.getElementById('map-status-filters');
         const timeSlider = document.getElementById('card-time-slider');
-        
+
         if (legend) mapContainer.appendChild(legend);
         if (filters) mapContainer.appendChild(filters);
         if (timeSlider) {
@@ -202,14 +233,14 @@ function initMap() {
         }
     });
 
-    mapInstance.on('exitFullscreen', function() {
+    mapInstance.on('exitFullscreen', function () {
         const wrapper = document.getElementById('map-wrapper');
         const sidePanel = document.querySelector('.side-panel');
         const legend = document.querySelector('.map-legend-overlay');
         const filters = document.getElementById('map-status-filters');
         const timeSlider = document.getElementById('card-time-slider');
         const actionButtons = sidePanel ? sidePanel.querySelector('.d-grid.gap-2.mt-auto') : null;
-        
+
         if (legend && wrapper) wrapper.appendChild(legend);
         if (filters && wrapper) wrapper.appendChild(filters);
         if (timeSlider && sidePanel && actionButtons) {
@@ -217,12 +248,38 @@ function initMap() {
             sidePanel.insertBefore(timeSlider, actionButtons);
         }
     });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(mapInstance);
-    
+    // High-performance basemaps with NO API key requirements or watermarks
+    const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        attribution: '&copy; Google Maps',
+        subdomains: ['0', '1', '2', '3'],
+        maxZoom: 20
+    });
+    const esriStreets = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri',
+        maxZoom: 19
+    });
+    const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        attribution: '&copy; Google Maps',
+        subdomains: ['0', '1', '2', '3'],
+        maxZoom: 20
+    });
+    const osmHot = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Humanitarian style',
+        subdomains: ['a', 'b', 'c'],
+        maxZoom: 19
+    });
+
+    googleRoads.addTo(mapInstance);
+
+    L.control.layers({
+        "Google Roads": googleRoads,
+        "Esri Streets": esriStreets,
+        "Satellite Hybrid": googleHybrid,
+        "Humanitarian OSM": osmHot
+    }, null, { position: 'topright' }).addTo(mapInstance);
+
     deckOverlay = new DeckGlLeaflet.LeafletLayer({
-        views: [new deck.MapView({repeat: true})],
+        views: [new deck.MapView({ repeat: true })],
         layers: []
     });
     mapInstance.addLayer(deckOverlay);
@@ -232,19 +289,20 @@ function initMap() {
         .then(res => res.json())
         .then(data => {
             allBoundaries = data.features || (data.results && data.results.features) || data.results || [];
-            
+
             window.boundaryLayer = L.geoJSON(data, {
-                style: function(feature) {
+                style: function (feature) {
                     return {
-                        color: 'rgba(0,0,0,0.2)',
-                        weight: 1,
-                        fillColor: 'transparent',
-                        fillOpacity: 0.0
+                        color: '#64748b',
+                        weight: 1.2,
+                        opacity: 0.5,
+                        fillColor: '#3b82f6',
+                        fillOpacity: 0.02
                     };
                 },
-                onEachFeature: function(feature, layer) {
+                onEachFeature: function (feature, layer) {
                     layer.on({
-                        mouseover: function(e) {
+                        mouseover: function (e) {
                             var layer = e.target;
                             layer.setStyle({
                                 weight: 2,
@@ -252,17 +310,17 @@ function initMap() {
                                 fillOpacity: 0.1
                             });
                         },
-                        mouseout: function(e) {
+                        mouseout: function (e) {
                             if (!window.boundaryLayer) return;
                             window.boundaryLayer.resetStyle(e.target);
                         },
-                        click: function(e) {
+                        click: function (e) {
                             const p = e.target.feature.properties;
                             if (!p) return;
-                            
+
                             const provSelect = $('#province-select');
                             const distSelect = $('#district-select');
-                            
+
                             if (p.level === 'province') {
                                 provSelect.val(p.id).trigger('change');
                             } else if (p.level === 'district') {
@@ -284,7 +342,7 @@ function initMap() {
             window.boundaryLayer.eachLayer(layer => {
                 const props = layer.feature.properties;
                 if (!props || !props.name) return;
-                
+
                 const level = (props.level || 'district').toLowerCase();
                 const rawName = String(props.name);
                 let normName = rawName.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -318,22 +376,24 @@ function initMap() {
                             break;
                         }
                     }
-                } catch(e) {}
+                } catch (e) { }
             });
             // --------------------------
 
         });
 
-    mapInstance.on('click', function(e) {
+    mapInstance.on('click', function (e) {
         if (!spatialQueryEnabled) return;
         handleSpatialQuery(e.latlng);
     });
 
-    document.getElementById('btnShowcase').addEventListener('click', function() {
-        const btn = this;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Loading Cases...';
-        btn.disabled = true;
-        
+    window.loadAllCases = function (onSuccess) {
+        const btn = document.getElementById('btnShowcase');
+        if (btn) {
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Loading Cases...';
+            btn.disabled = true;
+        }
+
         fetch('/api/cases/')
             .then(res => {
                 if (!res.ok) {
@@ -345,90 +405,134 @@ function initMap() {
                 if (data.error) throw new Error(data.error);
                 allCases = data.features || (data.results && data.results.features) || data.results || [];
                 if (allCases.length === 0) {
-                    alert('No cases found in database.');
-                    btn.innerHTML = 'SHOWCASE';
-                    btn.disabled = false;
+                    if (btn) {
+                        btn.innerHTML = '<i class="bi bi-play-circle-fill fs-5"></i> <span>Showcase</span>';
+                        btn.disabled = false;
+                    }
                     return;
                 }
 
                 let minDate = new Date();
                 let maxDate = new Date("2000-01-01");
-                
+
                 allCases.forEach(c => {
-                    if (c.properties && c.properties.date_of_onset) {
-                        const d = new Date(c.properties.date_of_onset);
-                        if (d < minDate) minDate = d;
-                        if (d > maxDate) maxDate = d;
+                    const rawDate = c.properties?.date_of_onset || c.properties?.test_date || c.properties?.date_reported;
+                    if (rawDate) {
+                        const d = new Date(rawDate);
+                        if (!isNaN(d.getTime())) {
+                            if (d < minDate) minDate = d;
+                            if (d > maxDate) maxDate = d;
+                        }
                     }
                 });
-                
-                // Dynamically extract variants
-                const uniqueVariants = {};
-                allCases.forEach(c => {
-                    if (!c.properties) return;
-                    const d = (c.properties.disease_type || "").toLowerCase();
-                    const v = c.properties.variant;
-                    if (!uniqueVariants[d]) uniqueVariants[d] = new Set();
-                    if (v) uniqueVariants[d].add(v);
-                });
-                
+
                 // Update global variant dropdown if a specific disease is selected
                 const currentDisease = document.getElementById('global-disease-select')?.value;
-                if (currentDisease && uniqueVariants[currentDisease]) {
-                    const selectBox = document.getElementById('global-variant-select');
-                    if (selectBox) {
-                        uniqueVariants[currentDisease].forEach(v => {
-                            if (v && v.trim() !== "") {
-                                let exists = false;
-                                for (let i = 0; i < selectBox.options.length; i++) {
-                                    if (selectBox.options[i].value === v) { exists = true; break; }
-                                }
-                                if (!exists) {
-                                    const opt = document.createElement('option');
-                                    opt.value = v;
-                                    opt.innerText = v;
-                                    selectBox.appendChild(opt);
-                                }
-                            }
-                        });
-                    }
+                if (currentDisease && window.populateVariantDropdown) {
+                    window.populateVariantDropdown(currentDisease);
                 }
-                
+
                 setupSlider(minDate.getTime(), maxDate.getTime());
                 renderCases();
                 updateLegend();
-                
-                btn.innerHTML = 'SHOWCASE';
-                btn.classList.replace('btn-success', 'btn-secondary');
-                
+
+                if (btn) {
+                    btn.innerHTML = '<i class="bi bi-play-circle-fill fs-5"></i> <span>Showcase</span>';
+                    btn.disabled = false;
+                    btn.classList.replace('btn-success', 'btn-secondary');
+                }
+
                 startLiveCasePolling();
+                if (typeof onSuccess === 'function') onSuccess();
             })
             .catch(err => {
-                alert('Error loading cases: ' + err);
-                btn.innerHTML = 'SHOWCASE';
-                btn.disabled = false;
+                console.error('Error loading cases:', err);
+                if (btn) {
+                    btn.innerHTML = '<i class="bi bi-play-circle-fill fs-5"></i> <span>Showcase</span>';
+                    btn.disabled = false;
+                }
             });
+    };
+
+    document.getElementById('btnShowcase')?.addEventListener('click', function () {
+        window.loadAllCases();
     });
+
+    // Auto-load all disease cases on map initialisation
+    window.loadAllCases();
 }
 
 function createPopupContent(feature) {
-    const p = feature.properties;
-    return `
-        <div class="popup-header text-uppercase" style="color: ${getColorForCase(p.disease_type, p.variant)}">
-            ${p.disease_type} Case
-        </div>
-        <div class="popup-detail">
-            <strong>Variant:</strong> ${p.variant || 'Unspecified'}<br>
-            <strong>Facility:</strong> ${p.facility__name || p.facility_name || 'Unknown'}<br>
-            <strong>Location:</strong> ${p.location_name || 'Unknown'}<br>
-            <strong>Reported:</strong> ${p.date_of_onset || 'Unknown Date'}<br>
-            <strong>Demographics:</strong> Age ${p.age || 'N/A'}, Gender ${p.gender || 'U'}<br>
-        </div>
+    const p = feature.properties || {};
+    const disease = (p.disease_type || 'Case').toUpperCase();
+    const color = getColorForCase(p.disease_type || '', p.variant || '');
+
+    // Variant badge styling
+    let variantBadgeClass = 'bg-secondary text-white';
+    if (p.variant === 'RR-TB' || p.variant === 'MDR-TB' || p.variant === 'XDR-TB') {
+        variantBadgeClass = 'bg-danger text-white';
+    } else if (p.variant === 'Rif-Sensitive') {
+        variantBadgeClass = 'bg-success text-white';
+    } else if (p.variant && p.variant !== 'Unspecified') {
+        variantBadgeClass = 'bg-primary text-white';
+    }
+
+    const facilityName = p.facility__name || p.facility_name || p.facility || 'Unknown Facility';
+    const locName = p.location_name || 'Unknown Location';
+    const dateStr = p.date_of_onset || p.test_date || p.date_reported || p.test_month || 'N/A';
+
+    // Demographics
+    let ageStr = 'Age N/A';
+    if (p.age !== null && p.age !== undefined && p.age !== '' && !isNaN(p.age)) {
+        ageStr = `Age ${p.age}`;
+    } else if (p.age_group && p.age_group !== 'Unknown') {
+        ageStr = `Age Group ${p.age_group}`;
+    }
+
+    let genderStr = 'Sex N/A';
+    if (p.gender === 'F' || p.sex === 'Female') genderStr = 'Female';
+    else if (p.gender === 'M' || p.sex === 'Male') genderStr = 'Male';
+    else if (p.gender && p.gender !== 'U') genderStr = p.gender;
+
+    let html = `
+        <div style="min-width: 220px; font-family: system-ui, -apple-system, sans-serif;">
+            <div class="d-flex align-items-center justify-content-between pb-1 mb-2 border-bottom">
+                <span class="fw-bold text-uppercase" style="color: ${color}; font-size: 13px;">
+                    <i class="bi bi-shield-plus me-1"></i> ${disease} CASE
+                </span>
+                <span class="badge ${variantBadgeClass}" style="font-size: 11px;">${p.variant || 'Unspecified'}</span>
+            </div>
+            <div style="font-size: 12px; line-height: 1.55; color: #334155;">
+                <div class="mb-1"><strong>Facility:</strong> ${facilityName}</div>
+                <div class="mb-1"><strong>Location:</strong> ${locName}</div>
+                <div class="mb-1"><strong>Date:</strong> ${dateStr}</div>
+                <div class="mb-1"><strong>Demographics:</strong> ${ageStr}, ${genderStr}</div>
     `;
+
+    // Clinical / Laboratory diagnostic details
+    if (p.assay) {
+        html += `<div class="mb-1"><strong>Assay:</strong> <span class="badge bg-light text-dark border">${p.assay}</span></div>`;
+    }
+    if (p.rif_result) {
+        const isResistant = p.rif_result.toLowerCase().includes('detected') && !p.rif_result.toLowerCase().includes('not');
+        const badgeColor = isResistant ? 'bg-danger text-white' : 'bg-success text-white';
+        html += `<div class="mb-1"><strong>RIF Result:</strong> <span class="badge ${badgeColor}">${p.rif_result}</span></div>`;
+    }
+    if (p.sample_type) {
+        html += `<div class="mb-1"><strong>Sample:</strong> ${p.sample_type}</div>`;
+    }
+    if (p.coord_method || p.coordinate_anchor) {
+        html += `<div class="text-muted small mt-1 pt-1 border-top" style="font-size: 11px;">
+            <i class="bi bi-geo-alt me-1"></i>Anchor: ${p.coordinate_anchor || p.coord_method}
+        </div>`;
+    }
+
+    html += `</div></div>`;
+    return html;
 }
 
 function showPopup(feature, coordinate) {
-    L.popup({closeOnClick: false})
+    L.popup({ closeOnClick: false })
         .setLatLng([coordinate[1], coordinate[0]])
         .setContent(createPopupContent(feature))
         .openOn(mapInstance);
@@ -468,7 +572,7 @@ function pollLatestCases() {
             if (newCases.length > 0) {
                 // Update timestamp
                 let latestTime = new Date(lastPollTimestamp).getTime();
-                
+
                 const deduplicatedNewCases = newCases.filter(newCase => {
                     const existingIdx = allCases.findIndex(c => c.properties.id === newCase.properties.id);
                     if (existingIdx === -1) {
@@ -479,7 +583,7 @@ function pollLatestCases() {
                     }
                     return false;
                 });
-                
+
                 let newlyAddedCount = 0;
                 deduplicatedNewCases.forEach(c => {
                     newlyAddedCount++;
@@ -491,28 +595,28 @@ function pollLatestCases() {
                     if (c.geometry && c.geometry.coordinates) {
                         const lngLat = c.geometry.coordinates;
                         const popupHtml = `<div class="fw-bold text-success"><i class="bi bi-bell-fill"></i> New ${c.properties.disease_type.toUpperCase()} Case!</div>`;
-                        L.popup({closeOnClick: false, autoClose: true})
+                        L.popup({ closeOnClick: false, autoClose: true })
                             .setLatLng([lngLat[1], lngLat[0]])
                             .setContent(popupHtml)
                             .openOn(mapInstance);
                     }
                 });
-                
+
                 // 8. Ensure the 'since' timestamp is updated correctly
                 lastPollTimestamp = new Date(latestTime).toISOString();
-                
+
                 if (newlyAddedCount > 0) {
                     if (latestTime > dateRange.max) {
                         const slider = document.getElementById('time-slider');
                         if (slider && slider.noUiSlider) {
                             let handles = slider.noUiSlider.get();
                             let rightHandle = parseInt(handles[1]);
-                            let wasPegged = rightHandle >= dateRange.max - 2000; 
-                            
+                            let wasPegged = rightHandle >= dateRange.max - 2000;
+
                             slider.noUiSlider.updateOptions({
                                 range: { 'min': dateRange.min, 'max': latestTime }
                             });
-                            
+
                             if (wasPegged) {
                                 slider.noUiSlider.set([handles[0], latestTime]);
                                 dateRange.max = latestTime;
@@ -521,9 +625,9 @@ function pollLatestCases() {
                             dateRange.max = latestTime;
                         }
                     }
-                    
+
                     // 9. Only refetch/render if new cases detected
-                    renderCases(); 
+                    renderCases();
                     updateLegend();
                     updateDatasetTable();
                 }
@@ -543,7 +647,7 @@ function startLiveCasePolling() {
     // 1. & 2. Ensure polling is started only once and prevent duplicates
     if (isPollingStarted) return;
     isPollingStarted = true;
-    
+
     if (currentPollTimeout) clearTimeout(currentPollTimeout);
     currentPollTimeout = setTimeout(pollLatestCases, currentPollInterval);
 }
@@ -558,24 +662,24 @@ document.addEventListener('visibilitychange', () => {
 
 function getFilteredFeatures() {
     const severity = document.getElementById('filter-severity').value;
-    const outcome  = document.getElementById('filter-outcome').value;
+    const outcome = document.getElementById('filter-outcome').value;
 
     return allCases.filter(c => {
         // Guard against invalid coordinates to prevent Deck.GL rendering crashes
         if (!c.geometry || !Array.isArray(c.geometry.coordinates) || c.geometry.coordinates.length < 2) return false;
-        
+
         const lon = parseFloat(c.geometry.coordinates[0]);
         const lat = parseFloat(c.geometry.coordinates[1]);
-        
+
         if (isNaN(lon) || isNaN(lat)) return false;
-        
+
         // Strictly assign valid numbers
         c.geometry.coordinates[0] = lon;
         c.geometry.coordinates[1] = lat;
-        
+
         const p = c.properties;
         if (!p) return false;
-        
+
         const diseaseType = (p.disease_type || "").toLowerCase();
 
         let diseaseMatch = false;
@@ -584,17 +688,18 @@ function getFilteredFeatures() {
             diseaseMatch = (!selectedVariant || selectedVariant === '') || (p.variant === selectedVariant);
         }
 
-        const caseTime = p.date_of_onset ? new Date(p.date_of_onset).getTime() : null;
+        const rawDate = p.date_of_onset || p.test_date || p.date_reported;
+        const caseTime = rawDate ? new Date(rawDate).getTime() : null;
         const dateMatch = !caseTime || isNaN(caseTime) || (caseTime >= dateRange.min && caseTime <= dateRange.max);
 
         let geoMatch = true;
-        
+
         // Add spatial pin drop radius filtering
         if (spatialQueryEnabled && window.spatialQueryPolygon && c.geometry && c.geometry.coordinates) {
             try {
                 const pt = turf.point(c.geometry.coordinates);
                 geoMatch = turf.booleanPointInPolygon(pt, window.spatialQueryPolygon);
-            } catch(e) {
+            } catch (e) {
                 geoMatch = true; // fail open
             }
         }
@@ -606,7 +711,7 @@ function getFilteredFeatures() {
                 if (!turf.booleanPointInPolygon(pt, window.activeRegionPolygon)) {
                     geoMatch = false;
                 }
-            } catch(e) {
+            } catch (e) {
                 geoMatch = true; // fail open
             }
         }
@@ -624,12 +729,12 @@ function getFilteredFeatures() {
 
 function renderCases() {
     const activeFeatures = getFilteredFeatures();
-    
+
     // Clear existing cluster markers if they exist
     if (window.markersGroup) {
         mapInstance.removeLayer(window.markersGroup);
     }
-    
+
     let deckLayers = [];
 
     if (currentDisplayMode === 'heatmap') {
@@ -682,7 +787,7 @@ function renderCases() {
             chunkedLoading: true,
             maxClusterRadius: 50
         });
-        
+
         activeFeatures.forEach(f => {
             let color = getColorForCase(f.properties.disease_type, f.properties.variant);
             let iconHtml = `<div style="background-color:${color}; width:16px; height:16px; border-radius:50%; border:2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>`;
@@ -692,13 +797,14 @@ function renderCases() {
                 iconSize: [20, 20],
                 iconAnchor: [10, 10]
             });
-            let m = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], {icon: customIcon});
+            let m = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], { icon: customIcon });
             m.bindPopup(createPopupContent(f));
+            m.bindTooltip(createPopupContent(f), { direction: 'top', sticky: true, opacity: 0.95 });
             window.markersGroup.addLayer(m);
         });
         mapInstance.addLayer(window.markersGroup);
     }
-    
+
     if (deckOverlay) {
         deckOverlay.setProps({ layers: deckLayers });
     }
@@ -712,7 +818,7 @@ function renderCases() {
             const d = f.properties.disease_type;
             diseaseCounts[d] = (diseaseCounts[d] || 0) + 1;
         });
-        
+
         let summaryHtml = `<div class="mb-2 fw-bold text-danger border-bottom pb-1">Radius Search: ${radiusKm}km</div>`;
         summaryHtml += `<div class="mb-2"><strong>Total Cases: </strong> ${count}</div>`;
         for (let [d, c] of Object.entries(diseaseCounts)) {
@@ -728,7 +834,7 @@ function renderCases() {
 
 // UI Event Listeners
 document.querySelectorAll('input[name="displayMode"]').forEach(radio => {
-    radio.addEventListener('change', function() {
+    radio.addEventListener('change', function () {
         currentDisplayMode = this.value;
         const heatControls = document.getElementById('heatmap-controls');
         if (this.value === 'heatmap') {
@@ -740,7 +846,7 @@ document.querySelectorAll('input[name="displayMode"]').forEach(radio => {
     });
 });
 
-document.getElementById('heat-radius')?.addEventListener('input', function() {
+document.getElementById('heat-radius')?.addEventListener('input', function () {
     document.getElementById('heat-radius-val').innerText = this.value;
     if (currentDisplayMode === 'heatmap') renderCases();
 });
@@ -752,10 +858,10 @@ document.getElementById('heat-radius')?.addEventListener('input', function() {
 //  Initialised inside DOMContentLoaded so mapInstance is ready
 // ─────────────────────────────────────────────────────────────
 function initMapSearch() {
-    const toggleBtn   = document.getElementById('btn-toggle-search');
+    const toggleBtn = document.getElementById('btn-toggle-search');
     const searchPanel = document.getElementById('search-panel-container');
     const searchInput = document.getElementById('region-search-input');
-    const closeBtn    = document.getElementById('btn-close-search');
+    const closeBtn = document.getElementById('btn-close-search');
 
     if (!toggleBtn || !searchPanel || !searchInput) {
         console.warn('[MapSearch] Required elements not found – search disabled.');
@@ -766,18 +872,18 @@ function initMapSearch() {
     const dropdown = document.createElement('div');
     dropdown.id = 'geocode-dropdown';
     Object.assign(dropdown.style, {
-        position:    'absolute',
-        top:         'calc(100% + 8px)',
-        left:        '0',
-        right:       '0',
-        background:  '#fff',
-        borderRadius:'16px',
-        boxShadow:   '0 8px 32px rgba(0,0,0,0.18)',
-        overflow:    'hidden',
-        overflowY:   'auto',
-        zIndex:      '99999',
-        display:     'none',
-        maxHeight:   '280px'
+        position: 'absolute',
+        top: 'calc(100% + 8px)',
+        left: '0',
+        right: '0',
+        background: '#fff',
+        borderRadius: '16px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+        overflow: 'hidden',
+        overflowY: 'auto',
+        zIndex: '99999',
+        display: 'none',
+        maxHeight: '280px'
     });
     searchPanel.style.position = 'relative';
     searchPanel.appendChild(dropdown);
@@ -794,8 +900,8 @@ function initMapSearch() {
 
     function flyToResult(result) {
         if (!mapInstance) return;
-        const lat  = parseFloat(result.lat);
-        const lon  = parseFloat(result.lon);
+        const lat = parseFloat(result.lat);
+        const lon = parseFloat(result.lon);
         const bbox = result.boundingbox; // [south, north, west, east]
         const displayName = result.display_name || '';
         const label = result.name || displayName.split(',')[0];
@@ -805,7 +911,7 @@ function initMapSearch() {
         // Fit to bounding box when available, otherwise fly to point
         if (bbox && bbox.length === 4) {
             const south = parseFloat(bbox[0]), north = parseFloat(bbox[1]);
-            const west  = parseFloat(bbox[2]), east  = parseFloat(bbox[3]);
+            const west = parseFloat(bbox[2]), east = parseFloat(bbox[3]);
             mapInstance.fitBounds([[south, west], [north, east]], { padding: [40, 40], maxZoom: 15 });
         } else {
             mapInstance.flyTo([lat, lon], 13, { animate: true, duration: 1.2 });
@@ -850,10 +956,10 @@ function initMapSearch() {
         }
 
         dropdown.innerHTML = results.map((r, i) => {
-            const primary   = r.name || r.display_name.split(',')[0];
+            const primary = r.name || r.display_name.split(',')[0];
             const secondary = r.display_name.replace(primary + ', ', '').split(',').slice(0, 3).join(', ');
             const icon = r.type === 'administrative' || r.class === 'boundary' ? 'bi-map' :
-                         r.class === 'place' ? 'bi-building' : 'bi-geo-alt';
+                r.class === 'place' ? 'bi-building' : 'bi-geo-alt';
             return `
                 <div class="geocode-item" data-idx="${i}" style="
                     padding:10px 16px;cursor:pointer;
@@ -882,9 +988,9 @@ function initMapSearch() {
 
     // --- Debounced Nominatim fetch ---
     let debounceTimer = null;
-    let lastQuery     = '';
-    let isLoading     = false;
-    let abortCtrl     = null;
+    let lastQuery = '';
+    let isLoading = false;
+    let abortCtrl = null;
 
     function fetchSuggestions(query) {
         if (isLoading && abortCtrl) abortCtrl.abort();
@@ -900,29 +1006,29 @@ function initMapSearch() {
         const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=8&accept-language=en`;
 
         fetch(url, {
-            signal:  abortCtrl.signal,
+            signal: abortCtrl.signal,
             headers: { 'Accept-Language': 'en', 'User-Agent': 'ZimEpiTracker/1.0' }
         })
-        .then(r => r.json())
-        .then(data => { isLoading = false; renderDropdown(data); })
-        .catch(err => {
-            if (err.name === 'AbortError') return;
-            isLoading = false;
-            dropdown.innerHTML = `<div style="padding:12px 16px;color:#ef4444;font-size:13px;">
+            .then(r => r.json())
+            .then(data => { isLoading = false; renderDropdown(data); })
+            .catch(err => {
+                if (err.name === 'AbortError') return;
+                isLoading = false;
+                dropdown.innerHTML = `<div style="padding:12px 16px;color:#ef4444;font-size:13px;">
                 <i class="bi bi-wifi-off me-2"></i>Search unavailable – check your connection.
             </div>`;
-            dropdown.style.display = 'block';
-        });
+                dropdown.style.display = 'block';
+            });
     }
 
-    searchInput.addEventListener('input', function() {
+    searchInput.addEventListener('input', function () {
         const q = this.value.trim();
         clearTimeout(debounceTimer);
         if (q.length < 2) { dropdown.style.display = 'none'; lastQuery = ''; return; }
         debounceTimer = setTimeout(() => fetchSuggestions(q), 380);
     });
 
-    searchInput.addEventListener('keydown', function(e) {
+    searchInput.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
             e.preventDefault();
             clearTimeout(debounceTimer);
@@ -933,7 +1039,7 @@ function initMapSearch() {
     });
 
     // Close dropdown on outside click
-    document.addEventListener('click', function(e) {
+    document.addEventListener('click', function (e) {
         if (!searchPanel.contains(e.target) && e.target !== toggleBtn) {
             dropdown.style.display = 'none';
         }
@@ -944,23 +1050,23 @@ function initMapSearch() {
         searchPanel.style.display = 'flex';   // flex keeps inner row aligned
         searchPanel.style.flexDirection = 'column';
         toggleBtn.style.background = '#6366f1';
-        toggleBtn.style.color      = '#fff';
-        toggleBtn.style.boxShadow  = '0 4px 16px rgba(99,102,241,0.45)';
+        toggleBtn.style.color = '#fff';
+        toggleBtn.style.boxShadow = '0 4px 16px rgba(99,102,241,0.45)';
         setTimeout(() => searchInput.focus(), 60);
     }
 
     function closeSearch() {
         searchPanel.style.display = 'none';
-        dropdown.style.display    = 'none';
+        dropdown.style.display = 'none';
         toggleBtn.style.background = '';
-        toggleBtn.style.color      = '';
-        toggleBtn.style.boxShadow  = '';
+        toggleBtn.style.color = '';
+        toggleBtn.style.boxShadow = '';
         searchInput.value = '';
-        lastQuery         = '';
+        lastQuery = '';
         clearSearchMarker();
     }
 
-    toggleBtn.addEventListener('click', function(e) {
+    toggleBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         const isVisible = searchPanel.style.display && searchPanel.style.display !== 'none';
         isVisible ? closeSearch() : openSearch();
@@ -969,7 +1075,7 @@ function initMapSearch() {
     if (closeBtn) closeBtn.addEventListener('click', closeSearch);
 
     // Keyboard shortcut: Ctrl+F or just / to open search
-    document.addEventListener('keydown', function(e) {
+    document.addEventListener('keydown', function (e) {
         if ((e.ctrlKey && e.key === 'f') || (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA')) {
             e.preventDefault();
             openSearch();
@@ -978,7 +1084,7 @@ function initMapSearch() {
 }
 
 // Spatial Query Setup
-document.getElementById('toggle-spatial-query')?.addEventListener('change', function() {
+document.getElementById('toggle-spatial-query')?.addEventListener('change', function () {
     spatialQueryEnabled = this.checked;
     const ctrls = document.getElementById('spatial-query-controls');
     if (spatialQueryEnabled) {
@@ -990,7 +1096,7 @@ document.getElementById('toggle-spatial-query')?.addEventListener('change', func
 });
 
 // Analytics Toggles
-document.getElementById('toggle-trend')?.addEventListener('change', function() {
+document.getElementById('toggle-trend')?.addEventListener('change', function () {
     const panel = document.getElementById('trend-analysis-panel');
     if (this.checked) {
         panel.style.display = 'block';
@@ -999,12 +1105,12 @@ document.getElementById('toggle-trend')?.addEventListener('change', function() {
         panel.style.display = 'none';
     }
 });
-document.getElementById('btn-close-trend')?.addEventListener('click', function() {
+document.getElementById('btn-close-trend')?.addEventListener('click', function () {
     document.getElementById('toggle-trend').checked = false;
     document.getElementById('trend-analysis-panel').style.display = 'none';
 });
 
-document.getElementById('toggle-correlation')?.addEventListener('change', function() {
+document.getElementById('toggle-correlation')?.addEventListener('change', function () {
     const panel = document.getElementById('correlation-analysis-panel');
     if (this.checked) {
         panel.style.display = 'block';
@@ -1013,19 +1119,19 @@ document.getElementById('toggle-correlation')?.addEventListener('change', functi
         panel.style.display = 'none';
     }
 });
-document.getElementById('btn-close-correlation')?.addEventListener('click', function() {
+document.getElementById('btn-close-correlation')?.addEventListener('click', function () {
     document.getElementById('toggle-correlation').checked = false;
     document.getElementById('correlation-analysis-panel').style.display = 'none';
 });
 
 document.querySelectorAll('.opacity-slider').forEach(slider => {
-    slider.addEventListener('input', function() {
+    slider.addEventListener('input', function () {
         const targetId = this.getAttribute('data-target');
         document.getElementById(targetId).style.opacity = this.value;
     });
 });
 
-document.getElementById('query-radius')?.addEventListener('input', function() {
+document.getElementById('query-radius')?.addEventListener('input', function () {
     document.getElementById('query-radius-val').innerText = this.value;
     if (spatialQueryEnabled && spatialQueryMarker) {
         handleSpatialQuery(spatialQueryMarker.getLatLng());
@@ -1048,8 +1154,8 @@ document.getElementById('query-radius')?.addEventListener('input', function() {
             updateSliderLabels(min, max);
         }
 
-        const badge     = document.getElementById('temporal-active-badge');
-        const badgeLbl  = document.getElementById('temporal-badge-text');
+        const badge = document.getElementById('temporal-active-badge');
+        const badgeLbl = document.getElementById('temporal-badge-text');
         if (badge && badgeLbl) {
             if (badgeText) {
                 badgeLbl.textContent = badgeText;
@@ -1065,13 +1171,13 @@ document.getElementById('query-radius')?.addEventListener('input', function() {
         let minTime = 0;
 
         const DAY = 24 * 60 * 60 * 1000;
-        if      (val === '1y')   minTime = now - 365  * DAY;
-        else if (val === '180d') minTime = now - 180  * DAY;
-        else if (val === '90d')  minTime = now - 90   * DAY;
-        else if (val === '30d')  minTime = now - 30   * DAY;
-        else if (val === '14d')  minTime = now - 14   * DAY;
-        else if (val === '7d')   minTime = now - 7    * DAY;
-        else if (val === 'all')  minTime = 0;
+        if (val === '1y') minTime = now - 365 * DAY;
+        else if (val === '180d') minTime = now - 180 * DAY;
+        else if (val === '90d') minTime = now - 90 * DAY;
+        else if (val === '30d') minTime = now - 30 * DAY;
+        else if (val === '14d') minTime = now - 14 * DAY;
+        else if (val === '7d') minTime = now - 7 * DAY;
+        else if (val === 'all') minTime = 0;
 
         const badgeText = val === 'all' ? null : label;
         applyDateRange(minTime, now, badgeText);
@@ -1103,8 +1209,8 @@ document.getElementById('query-radius')?.addEventListener('input', function() {
     });
 
     // --- Month search parser ---
-    const MONTH_NAMES = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-    const MONTH_FULL  = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    const MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const MONTH_FULL = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 
     function parseMonthInput(raw) {
         const text = raw.trim().toLowerCase();
@@ -1130,7 +1236,7 @@ document.getElementById('query-radius')?.addEventListener('input', function() {
         if (month < 0) {
             const idx = MONTH_FULL.indexOf(text);
             const idx2 = MONTH_NAMES.indexOf(text);
-            if (idx >= 0)  { month = idx;  year = new Date().getFullYear(); }
+            if (idx >= 0) { month = idx; year = new Date().getFullYear(); }
             if (idx2 >= 0) { month = idx2; year = new Date().getFullYear(); }
         }
 
@@ -1151,8 +1257,8 @@ document.getElementById('query-radius')?.addEventListener('input', function() {
         if (month < 0 || month > 11) return null;
 
         const start = new Date(year, month, 1).getTime();
-        const end   = new Date(year, month + 1, 0, 23, 59, 59, 999).getTime(); // last ms of month
-        const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const end = new Date(year, month + 1, 0, 23, 59, 59, 999).getTime(); // last ms of month
+        const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         return { min: start, max: end, label: `${MONTH_LABELS[month]} ${year}` };
     }
 
@@ -1181,7 +1287,7 @@ document.getElementById('query-radius')?.addEventListener('input', function() {
     }
 
     // Enter key on month input
-    document.getElementById('month-search-input')?.addEventListener('keydown', function(e) {
+    document.getElementById('month-search-input')?.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); applyMonthSearch(); }
     });
 
@@ -1189,7 +1295,7 @@ document.getElementById('query-radius')?.addEventListener('input', function() {
     document.getElementById('btn-apply-month')?.addEventListener('click', applyMonthSearch);
 
     // Clear / reset button inside active badge
-    document.getElementById('btn-clear-temporal')?.addEventListener('click', function() {
+    document.getElementById('btn-clear-temporal')?.addEventListener('click', function () {
         const monthInput = document.getElementById('month-search-input');
         if (monthInput) monthInput.value = '';
 
@@ -1212,7 +1318,7 @@ document.getElementById('query-radius')?.addEventListener('input', function() {
 
 // Initialise date range to 'This Year' (matching the default active pill)
 
-(function() {
+(function () {
     const now = Date.now();
     dateRange = { min: now - (365 * 24 * 60 * 60 * 1000), max: now };
 })();
@@ -1232,19 +1338,19 @@ function clearSpatialQuery() {
 
 function handleSpatialQuery(latlng) {
     clearSpatialQuery();
-    
+
     spatialQueryMarker = L.circleMarker(latlng, {
-        color: '#dc3545', 
-        radius: 6, 
+        color: '#dc3545',
+        radius: 6,
         fillOpacity: 1
     }).addTo(mapInstance);
-        
+
     const radiusKm = parseFloat(document.getElementById('query-radius').value);
     const center = [latlng.lng, latlng.lat];
-    const options = {steps: 64, units: 'kilometers'};
+    const options = { steps: 64, units: 'kilometers' };
     const circlePolygon = turf.circle(center, radiusKm, options);
     window.spatialQueryPolygon = circlePolygon;
-    
+
     window.spatialCircleLayer = L.geoJSON(circlePolygon, {
         style: {
             color: '#dc3545',
@@ -1253,7 +1359,7 @@ function handleSpatialQuery(latlng) {
             fillOpacity: 0.1
         }
     }).addTo(mapInstance);
-    
+
     // 1. Bind an empty spinner popup initially and open it so the user sees it loading
     spatialQueryMarker.bindPopup('<div class="d-flex align-items-center"><div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div><span>Calculating...</span></div>').openPopup();
 
@@ -1308,7 +1414,7 @@ function updateSliderLabels(min, max) {
 }
 
 // Dataset Upload
-document.getElementById('uploadDiseaseSelection')?.addEventListener('change', function() {
+document.getElementById('uploadDiseaseSelection')?.addEventListener('change', function () {
     const val = this.value;
     const warningBox = document.getElementById('diseaseWarningBox');
     if (['cholera', 'tb', 'hiv'].includes(val)) {
@@ -1318,7 +1424,7 @@ document.getElementById('uploadDiseaseSelection')?.addEventListener('change', fu
     }
 });
 
-document.getElementById('btnSubmitUpload')?.addEventListener('click', function() {
+document.getElementById('btnSubmitUpload')?.addEventListener('click', function () {
     const diseaseSelect = document.getElementById('uploadDiseaseSelection');
     if (!diseaseSelect || !diseaseSelect.value) {
         alert("Please select a target disease type before importing.");
@@ -1348,31 +1454,31 @@ document.getElementById('btnSubmitUpload')?.addEventListener('click', function()
         },
         body: formData
     })
-    .then(res => res.json())
-    .then(data => {
-        document.getElementById('uploadSpinner').classList.add('d-none');
-        if (data.status === 'success') {
-            feedback.classList.replace('alert-info', 'alert-success');
-            feedback.innerHTML = `<strong>Success!</strong> Imported ${data.records_imported} records.`;
-            fileInput.value = "";
-            
-            setTimeout(() => {
-                const modalEl = document.getElementById('uploadDatasetModal');
-                const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-                modal.hide();
-                document.getElementById('btnShowcase').click();
-            }, 1500);
-        } else {
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('uploadSpinner').classList.add('d-none');
+            if (data.status === 'success') {
+                feedback.classList.replace('alert-info', 'alert-success');
+                feedback.innerHTML = `<strong>Success!</strong> ${data.message || `Imported ${data.records_imported || 0} records.`}`;
+                fileInput.value = "";
+
+                setTimeout(() => {
+                    const modalEl = document.getElementById('uploadDatasetModal');
+                    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                    modal.hide();
+                    document.getElementById('btnShowcase').click();
+                }, 1500);
+            } else {
+                feedback.classList.replace('alert-info', 'alert-danger');
+                feedback.innerHTML = `<strong>Error:</strong> ${data.message || 'Validation failed.'}`;
+            }
+        })
+        .catch(err => {
+            document.getElementById('uploadSpinner').classList.add('d-none');
             feedback.classList.replace('alert-info', 'alert-danger');
-            feedback.innerHTML = `<strong>Error:</strong> ${data.message || 'Validation failed.'}`;
-        }
-    })
-    .catch(err => {
-        document.getElementById('uploadSpinner').classList.add('d-none');
-        feedback.classList.replace('alert-info', 'alert-danger');
-        feedback.innerText = "Server error during upload.";
-        console.error(err);
-    });
+            feedback.innerText = "Server error during upload.";
+            console.error(err);
+        });
 });
 
 // Dropdowns Filter Initialization
@@ -1392,14 +1498,14 @@ function populateBoundaryDropdowns() {
     fetch('/api/regions/')
         .then(r => r.json())
         .then(data => {
-            const provinces    = data.provinces    || [];
-            const allDistricts = data.districts    || [];
+            const provinces = data.provinces || [];
+            const allDistricts = data.districts || [];
 
             // -- Province dropdown --
             provSelect.innerHTML = '<option value=""></option>';
             provinces.forEach(p => {
                 const opt = document.createElement('option');
-                opt.value       = p.id;
+                opt.value = p.id;
                 opt.textContent = p.name;
                 provSelect.appendChild(opt);
             });
@@ -1409,7 +1515,7 @@ function populateBoundaryDropdowns() {
                 distSelect.innerHTML = '<option value=""></option>';
                 allDistricts.forEach(d => {
                     if (selectedProvId) {
-                        const matchById   = String(d.province_id) === String(selectedProvId);
+                        const matchById = String(d.province_id) === String(selectedProvId);
                         const matchByName = provinces.find(
                             p => String(p.id) === String(selectedProvId) && p.name === d.province
                         );
@@ -1419,7 +1525,7 @@ function populateBoundaryDropdowns() {
                         }
                     }
                     const opt = document.createElement('option');
-                    opt.value       = d.id;
+                    opt.value = d.id;
                     opt.textContent = d.name;
                     distSelect.appendChild(opt);
                 });
@@ -1427,12 +1533,12 @@ function populateBoundaryDropdowns() {
 
             renderDistricts(null);  // all districts on first load
 
-            const s2base = { 
-                theme: 'bootstrap-5', 
-                width: '100%', 
+            const s2base = {
+                theme: 'bootstrap-5',
+                width: '100%',
                 allowClear: true,
                 language: {
-                    noResults: function() {
+                    noResults: function () {
                         return "Region not found";
                     }
                 }
@@ -1475,7 +1581,7 @@ function populateBoundaryDropdowns() {
 
 
 // unified region filter method
-window.applyRegionFilter = function(searchString, skipDropdownUpdate = false) {
+window.applyRegionFilter = function (searchString, skipDropdownUpdate = false) {
     if (!window.regionIndex || window.regionIndex.length === 0) return;
 
     if (!searchString || searchString.trim() === '' || searchString.toLowerCase() === 'all zimbabwe') {
@@ -1484,7 +1590,7 @@ window.applyRegionFilter = function(searchString, skipDropdownUpdate = false) {
             if (!mapInstance.hasLayer(layer)) mapInstance.addLayer(layer);
             window.boundaryLayer.resetStyle(layer);
         });
-        mapInstance.flyTo([-19.0154, 29.1549], 6, {duration: 1.5});
+        mapInstance.flyTo([-19.0154, 29.1549], 6, { duration: 1.5 });
         renderCases();
         if (!skipDropdownUpdate) {
             $('#province-select').val('').trigger('change.select2');
@@ -1500,7 +1606,7 @@ window.applyRegionFilter = function(searchString, skipDropdownUpdate = false) {
     if (!matchedRegion) {
         matchedRegion = window.regionIndex.find(r => r.normalisedName === normSearch || r.originalName.toLowerCase() === normSearch);
     }
-    
+
     if (!matchedRegion) {
         matchedRegion = window.regionIndex.find(r => r.normalisedName.includes(normSearch));
     }
@@ -1522,12 +1628,12 @@ window.applyRegionFilter = function(searchString, skipDropdownUpdate = false) {
     }
 
     if (matchedRegion.bounds.isValid()) {
-        mapInstance.flyToBounds(matchedRegion.bounds, {padding: [40, 40], maxZoom: 10, duration: 1.5});
+        mapInstance.flyToBounds(matchedRegion.bounds, { padding: [40, 40], maxZoom: 10, duration: 1.5 });
     }
 
     window.boundaryLayer.eachLayer(layer => {
         let show = false;
-        
+
         if (matchedRegion.level === 'province') {
             if (layer === matchedRegion.layer) show = true;
             else {
@@ -1543,7 +1649,7 @@ window.applyRegionFilter = function(searchString, skipDropdownUpdate = false) {
         if (show) {
             if (!mapInstance.hasLayer(layer)) mapInstance.addLayer(layer);
             if (layer === matchedRegion.layer) {
-                layer.setStyle({weight: 3, color: '#ffc107', fillOpacity: 0.1});
+                layer.setStyle({ weight: 3, color: '#ffc107', fillOpacity: 0.1 });
             } else {
                 window.boundaryLayer.resetStyle(layer);
             }
@@ -1579,17 +1685,17 @@ function filterBoundaryLayer(provId, distId) {
 }
 
 // Interactive Data Table View
-document.getElementById('btnToggleDataset')?.addEventListener('click', function() {
+document.getElementById('btnToggleDataset')?.addEventListener('click', function () {
     const wrapper = document.getElementById('dataset-wrapper');
     const dragHandle = document.getElementById('dataset-drag-handle');
-    
+
     if (wrapper.style.display === 'none') {
         wrapper.style.display = 'flex';
         wrapper.style.height = '40vh';
         dragHandle.style.display = 'flex';
         this.innerHTML = '<i class="bi bi-layout-split fs-5"></i> <span>Hide Dataset</span>';
         this.classList.replace('action-btn-gray', 'action-btn-outline');
-        
+
         updateDatasetTable(getFilteredFeatures());
     } else {
         wrapper.style.display = 'none';
@@ -1601,10 +1707,10 @@ document.getElementById('btnToggleDataset')?.addEventListener('click', function(
 function updateDatasetTable(features) {
     const track = document.getElementById('dataset-slider-track');
     if (!track) return;
-    
+
     track.innerHTML = '';
     datasetsByDisease = {};
-    
+
     if (!features || features.length === 0 || visibleDiseases.length === 0) {
         track.innerHTML = '<div style="flex: 0 0 100%; width: 100%; padding: 20px; text-align: center;" class="text-muted">No records found.</div>';
         document.getElementById('dataset-title').innerText = 'Case Dataset';
@@ -1614,9 +1720,9 @@ function updateDatasetTable(features) {
     visibleDiseases.forEach((disease, index) => {
         const diseaseFeatures = features.filter(f => f.properties.disease_type.toLowerCase() === disease.toLowerCase());
         datasetsByDisease[disease] = diseaseFeatures; // save for download
-        
+
         const color = getColorForCase(disease);
-        
+
         // Build table
         let tableHtml = `
             <div style="flex: 0 0 100%; width: 100%; height: 100%; overflow-y: auto; padding: 15px;">
@@ -1634,7 +1740,7 @@ function updateDatasetTable(features) {
                     </thead>
                     <tbody>
         `;
-        
+
         if (diseaseFeatures.length === 0) {
             tableHtml += `<tr><td colspan="9" class="text-center text-muted py-3">No cases found for ${disease}</td></tr>`;
         } else {
@@ -1655,16 +1761,16 @@ function updateDatasetTable(features) {
                 `;
             });
         }
-        
+
         tableHtml += `</tbody></table></div>`;
         track.innerHTML += tableHtml;
     });
-    
+
     // Ensure index is valid
     if (currentSliderIndex >= visibleDiseases.length) {
         currentSliderIndex = Math.max(0, visibleDiseases.length - 1);
     }
-    
+
     updateSliderUI();
 }
 
@@ -1672,34 +1778,34 @@ function updateSliderUI() {
     const track = document.getElementById('dataset-slider-track');
     const title = document.getElementById('dataset-title');
     if (!track || visibleDiseases.length === 0) return;
-    
+
     track.style.transform = `translateX(-${currentSliderIndex * 100}%)`;
     title.innerText = visibleDiseases[currentSliderIndex].toUpperCase() + ' Dataset';
 }
 
-document.getElementById('btnSlideLeft')?.addEventListener('click', function() {
+document.getElementById('btnSlideLeft')?.addEventListener('click', function () {
     if (visibleDiseases.length <= 1) return;
     currentSliderIndex = (currentSliderIndex > 0) ? currentSliderIndex - 1 : visibleDiseases.length - 1;
     updateSliderUI();
 });
 
-document.getElementById('btnSlideRight')?.addEventListener('click', function() {
+document.getElementById('btnSlideRight')?.addEventListener('click', function () {
     if (visibleDiseases.length <= 1) return;
     currentSliderIndex = (currentSliderIndex < visibleDiseases.length - 1) ? currentSliderIndex + 1 : 0;
     updateSliderUI();
 });
 
-window.downloadDiseaseCSV = function(disease) {
+window.downloadDiseaseCSV = function (disease) {
     const features = datasetsByDisease[disease];
     if (!features || features.length === 0) {
         alert("No data available to download.");
         return;
     }
-    
+
     let csvContent = "data:text/csv;charset=utf-8,";
     const headers = ['ID', 'Disease', 'Variant', 'Facility', 'Location', 'Date of Onset', 'Severity', 'Outcome', 'Coordinates'];
     csvContent += headers.join(",") + "\\r\\n";
-    
+
     features.forEach(f => {
         const p = f.properties;
         const coords = f.geometry && f.geometry.coordinates ? `"${f.geometry.coordinates[1]}, ${f.geometry.coordinates[0]}"` : "N/A";
@@ -1716,7 +1822,7 @@ window.downloadDiseaseCSV = function(disease) {
         ];
         csvContent += row.map(v => `"${v}"`).join(",") + "\r\n";
     });
-    
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -1726,9 +1832,9 @@ window.downloadDiseaseCSV = function(disease) {
     document.body.removeChild(link);
 };
 
-window.zoomToCase = function(lng, lat) {
-    mapInstance.setView([lat, lng], 14, {animate: true});
-    L.popup({closeOnClick: true})
+window.zoomToCase = function (lng, lat) {
+    mapInstance.setView([lat, lng], 14, { animate: true });
+    L.popup({ closeOnClick: true })
         .setLatLng([lat, lng])
         .setContent(`<div class="fw-bold">Case Located</div>`)
         .openOn(mapInstance);
@@ -1741,7 +1847,7 @@ let isDragging = false;
 let startY, startHeight;
 
 if (dragHandle) {
-    dragHandle.addEventListener('mousedown', function(e) {
+    dragHandle.addEventListener('mousedown', function (e) {
         isDragging = true;
         startY = e.clientY;
         startHeight = parseInt(window.getComputedStyle(datasetWrapper).height, 10);
@@ -1749,19 +1855,19 @@ if (dragHandle) {
         e.preventDefault();
     });
 
-    document.addEventListener('mousemove', function(e) {
+    document.addEventListener('mousemove', function (e) {
         if (!isDragging) return;
         const dy = startY - e.clientY;
         const newHeight = startHeight + dy;
         const maxHeight = window.innerHeight - 60; // Leave space for navbar
-        
+
         if (newHeight >= 100 && newHeight <= maxHeight) {
             datasetWrapper.style.flex = `0 0 ${newHeight}px`;
             datasetWrapper.style.height = `${newHeight}px`;
         }
     });
 
-    document.addEventListener('mouseup', function() {
+    document.addEventListener('mouseup', function () {
         if (isDragging) {
             isDragging = false;
             document.body.style.cursor = 'default';
@@ -1770,14 +1876,14 @@ if (dragHandle) {
 }
 
 // Dataset Header Buttons functionality
-document.getElementById('btnCloseDataset')?.addEventListener('click', function() {
+document.getElementById('btnCloseDataset')?.addEventListener('click', function () {
     document.getElementById('btnToggleDataset').click();
 });
 
-document.getElementById('btnFullscreenDataset')?.addEventListener('click', function() {
+document.getElementById('btnFullscreenDataset')?.addEventListener('click', function () {
     const wrapper = document.getElementById('dataset-wrapper');
     const dragHandle = document.getElementById('dataset-drag-handle');
-    
+
     if (wrapper.classList.contains('fullscreen-dataset')) {
         wrapper.classList.remove('fullscreen-dataset');
         wrapper.style.position = 'relative';
@@ -1814,11 +1920,11 @@ function getEpiWeek(dateObj) {
     d.setUTCDate(d.getUTCDate() + 4 - day);  // set to Thursday
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
     const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-    const yr   = d.getUTCFullYear();
+    const yr = d.getUTCFullYear();
     return {
-        key:   `${yr}-W${String(week).padStart(2, '0')}`,
+        key: `${yr}-W${String(week).padStart(2, '0')}`,
         label: `W${String(week).padStart(2, '0')} ${yr}`,
-        sort:  yr * 100 + week
+        sort: yr * 100 + week
     };
 }
 
@@ -1829,7 +1935,7 @@ function getEpiWeek(dateObj) {
  */
 function calcEMA(data, period) {
     const alpha = 2 / (period + 1);
-    const ema   = new Array(data.length).fill(null);
+    const ema = new Array(data.length).fill(null);
     let seed = -1;
     // Find first non-null value to seed EMA
     for (let i = 0; i < data.length; i++) {
@@ -1853,7 +1959,7 @@ function updateTimeSeriesChart(features) {
 
     if (!features || features.length === 0) {
         if (timeSeriesChart) {
-            timeSeriesChart.data.labels   = [];
+            timeSeriesChart.data.labels = [];
             timeSeriesChart.data.datasets = [];
             timeSeriesChart.update('none');
         }
@@ -1861,83 +1967,83 @@ function updateTimeSeriesChart(features) {
     }
 
     // ── 1. Aggregate case counts by ISO epi-week and disease ──────────────
-    const weekMap      = {};  // key → { label, sort, counts: { disease: n } }
-    const diseasesSet  = new Set();
+    const weekMap = {};  // key → { label, sort, counts: { disease: n } }
+    const diseasesSet = new Set();
 
     features.forEach(f => {
         const raw = f.properties.date_of_onset;
         if (!raw) return;
         const disease = f.properties.disease_type.toLowerCase();
-        const epi     = getEpiWeek(new Date(raw));
+        const epi = getEpiWeek(new Date(raw));
 
         if (!weekMap[epi.key]) weekMap[epi.key] = { label: epi.label, sort: epi.sort, counts: {} };
         weekMap[epi.key].counts[disease] = (weekMap[epi.key].counts[disease] || 0) + 1;
         diseasesSet.add(disease);
     });
 
-    const sortedWeeks  = Object.values(weekMap).sort((a, b) => a.sort - b.sort);
-    const labels       = sortedWeeks.map(w => w.label);
-    const diseases     = Array.from(diseasesSet);
+    const sortedWeeks = Object.values(weekMap).sort((a, b) => a.sort - b.sort);
+    const labels = sortedWeeks.map(w => w.label);
+    const diseases = Array.from(diseasesSet);
 
     // ── 2. Build datasets: raw epi-curve line + EMA trend overlay ─────────
     const datasets = [];
 
     diseases.forEach(disease => {
-        const color    = getColorForCase(disease, null);
+        const color = getColorForCase(disease, null);
         const rawCounts = sortedWeeks.map(w => w.counts[disease] || 0);
         const emaCounts = calcEMA(rawCounts, 4);
 
         // Raw incidence curve — thin, low-opacity filled area (the "epi-curve" bar equivalent)
         datasets.push({
-            label:             disease.toUpperCase(),
-            data:              rawCounts,
-            borderColor:       color + 'aa',      // semi-transparent
-            backgroundColor:   color + '18',      // very light fill
-            borderWidth:       1.5,
-            fill:              true,
-            tension:           0.35,
-            pointRadius:       0,                 // NO dots — pure line
-            pointHoverRadius:  4,
-            spanGaps:          true,
-            order:             2,                 // draw behind EMA
+            label: disease.toUpperCase(),
+            data: rawCounts,
+            borderColor: color + 'aa',      // semi-transparent
+            backgroundColor: color + '18',      // very light fill
+            borderWidth: 1.5,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 0,                 // NO dots — pure line
+            pointHoverRadius: 4,
+            spanGaps: true,
+            order: 2,                 // draw behind EMA
         });
 
         // 4-week EMA trend line — solid, prominent, no fill (the meaningful trend)
         datasets.push({
-            label:             disease.toUpperCase() + ' (4w trend)',
-            data:              emaCounts,
-            borderColor:       color,
-            backgroundColor:   'transparent',
-            borderWidth:       2.5,
-            fill:              false,
-            tension:           0.45,
-            pointRadius:       0,
-            pointHoverRadius:  5,
-            borderDash:        [],                // solid trend line
-            spanGaps:          true,
-            order:             1,                 // draw on top
+            label: disease.toUpperCase() + ' (4w trend)',
+            data: emaCounts,
+            borderColor: color,
+            backgroundColor: 'transparent',
+            borderWidth: 2.5,
+            fill: false,
+            tension: 0.45,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            borderDash: [],                // solid trend line
+            spanGaps: true,
+            order: 1,                 // draw on top
         });
     });
 
     // ── 3. Chart options ──────────────────────────────────────────────────
     const chartOptions = {
-        responsive:          true,
+        responsive: true,
         maintainAspectRatio: false,
-        animation:           { duration: 400 },
+        animation: { duration: 400 },
         plugins: {
             legend: {
                 position: 'top',
                 labels: {
-                    boxWidth:       10,
-                    usePointStyle:  true,
-                    pointStyle:     'line',
-                    font:           { size: 10, family: 'Inter, sans-serif' },
+                    boxWidth: 10,
+                    usePointStyle: true,
+                    pointStyle: 'line',
+                    font: { size: 10, family: 'Inter, sans-serif' },
                     // Hide the raw-curve entries; only show trend lines in legend
                     filter: (item) => item.text.includes('trend')
                 }
             },
             tooltip: {
-                mode:      'index',
+                mode: 'index',
                 intersect: false,
                 callbacks: {
                     title: (items) => `Epi-week: ${items[0]?.label || ''}`,
@@ -1956,8 +2062,8 @@ function updateTimeSeriesChart(features) {
                                     i.dataset.label === item.dataset.label + ' (4w trend)'
                                 );
                                 // Find EMA dataset manually
-                                const idx   = item.dataIndex;
-                                const ds    = timeSeriesChart?.data?.datasets;
+                                const idx = item.dataIndex;
+                                const ds = timeSeriesChart?.data?.datasets;
                                 if (ds) {
                                     const trendDs = ds.find(d =>
                                         d.label === item.dataset.label + ' (4w trend)'
@@ -1972,36 +2078,36 @@ function updateTimeSeriesChart(features) {
                     }
                 },
                 backgroundColor: 'rgba(255,255,255,0.95)',
-                titleColor:      '#1e293b',
-                bodyColor:       '#475569',
-                borderColor:     '#e2e8f0',
-                borderWidth:     1,
-                padding:         10,
+                titleColor: '#1e293b',
+                bodyColor: '#475569',
+                borderColor: '#e2e8f0',
+                borderWidth: 1,
+                padding: 10,
             }
         },
         scales: {
             y: {
                 beginAtZero: true,
                 title: {
-                    display:  true,
-                    text:     'Reported Cases',
-                    font:     { size: 10, weight: '600' },
-                    color:    '#94a3b8'
+                    display: true,
+                    text: 'Reported Cases',
+                    font: { size: 10, weight: '600' },
+                    color: '#94a3b8'
                 },
                 ticks: {
                     precision: 0,
-                    font:      { size: 10 },
-                    color:     '#94a3b8'
+                    font: { size: 10 },
+                    color: '#94a3b8'
                 },
                 grid: { color: '#f1f5f9' }
             },
             x: {
-                grid:  { display: false },
+                grid: { display: false },
                 ticks: {
-                    font:          { size: 9 },
-                    color:         '#94a3b8',
-                    maxRotation:   45,
-                    autoSkip:      true,
+                    font: { size: 9 },
+                    color: '#94a3b8',
+                    maxRotation: 45,
+                    autoSkip: true,
                     maxTicksLimit: 20   // prevent x-axis crowding
                 }
             }
@@ -2010,14 +2116,14 @@ function updateTimeSeriesChart(features) {
     };
 
     if (timeSeriesChart) {
-        timeSeriesChart.data.labels   = labels;
+        timeSeriesChart.data.labels = labels;
         timeSeriesChart.data.datasets = datasets;
-        timeSeriesChart.options       = chartOptions;
+        timeSeriesChart.options = chartOptions;
         timeSeriesChart.update('active');
     } else {
         timeSeriesChart = new Chart(ctx, {
-            type:    'line',
-            data:    { labels, datasets },
+            type: 'line',
+            data: { labels, datasets },
             options: chartOptions
         });
     }
@@ -2028,7 +2134,7 @@ function updateTimeSeriesChart(features) {
 
 
 // Chart Toggle functionality
-document.getElementById('btn-toggle-chart')?.addEventListener('click', function() {
+document.getElementById('btn-toggle-chart')?.addEventListener('click', function () {
     const panel = document.getElementById('timeseries-chart-panel');
     if (panel.style.display === 'none') {
         panel.style.display = 'block';
@@ -2039,14 +2145,14 @@ document.getElementById('btn-toggle-chart')?.addEventListener('click', function(
         panel.style.display = 'none';
     }
 });
-document.getElementById('btn-close-chart')?.addEventListener('click', function() {
+document.getElementById('btn-close-chart')?.addEventListener('click', function () {
     document.getElementById('timeseries-chart-panel').style.display = 'none';
 });
 
 
 
 // Status Filters Toggle functionality
-document.getElementById('btn-toggle-filters')?.addEventListener('click', function() {
+document.getElementById('btn-toggle-filters')?.addEventListener('click', function () {
     const panel = document.getElementById('map-status-filters');
     if (panel.style.display === 'none') {
         panel.style.display = 'block';
@@ -2054,12 +2160,12 @@ document.getElementById('btn-toggle-filters')?.addEventListener('click', functio
         panel.style.display = 'none';
     }
 });
-document.getElementById('btn-close-filters')?.addEventListener('click', function() {
+document.getElementById('btn-close-filters')?.addEventListener('click', function () {
     document.getElementById('map-status-filters').style.display = 'none';
 });
 
 // Legend Toggle functionality
-document.getElementById('btn-toggle-legend')?.addEventListener('click', function() {
+document.getElementById('btn-toggle-legend')?.addEventListener('click', function () {
     const panel = document.querySelector('.map-legend-overlay');
     if (panel.style.display === 'none') {
         panel.style.display = 'block';
@@ -2067,7 +2173,7 @@ document.getElementById('btn-toggle-legend')?.addEventListener('click', function
         panel.style.display = 'none';
     }
 });
-document.getElementById('btn-close-legend')?.addEventListener('click', function() {
+document.getElementById('btn-close-legend')?.addEventListener('click', function () {
     document.querySelector('.map-legend-overlay').style.display = 'none';
 });
 
@@ -2093,48 +2199,42 @@ function calculateEMA(data, alpha) {
 function calculateLinearRegression(x, y) {
     const n = y.length;
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-    
+
     for (let i = 0; i < n; i++) {
         sumX += x[i];
         sumY += y[i];
         sumXY += x[i] * y[i];
         sumX2 += x[i] * x[i];
     }
-    
+
     // Handle edge case where n is small or sumX2 == sumX*sumX
     const denominator = n * sumX2 - sumX * sumX;
     if (denominator === 0) return { slope: 0, intercept: sumY / (n || 1) };
-    
+
     const slope = (n * sumXY - sumX * sumY) / denominator;
     const intercept = (sumY - slope * sumX) / n;
-    
-    return { slope, intercept };
-}
 
-function calculateEMA(data, alpha) {
-    if (data.length === 0) return [];
-    let result = [data[0]];
-    for (let i = 1; i < data.length; i++) {
-        result.push((data[i] * alpha) + (result[i - 1] * (1 - alpha)));
-    }
-    return result;
+    return { slope, intercept };
 }
 
 function updateTrendAnalysis() {
     const panel = document.getElementById('trend-analysis-panel');
     if (!panel || panel.style.display === 'none') return;
-    
+
     const features = getFilteredFeatures();
     if (features.length === 0) {
         document.getElementById('trend-summary-text').innerText = "Not enough data for trend analysis.";
         if (trendAnalysisChart) trendAnalysisChart.destroy();
         return;
     }
-    
+
     // Group by week
     let weeklyCounts = {};
     features.forEach(f => {
-        const d = new Date(f.properties.date_of_onset);
+        const rawDate = f.properties?.date_of_onset || f.properties?.test_date || f.properties?.date_reported;
+        if (!rawDate) return;
+        const d = new Date(rawDate);
+        if (isNaN(d.getTime())) return;
         const year = d.getFullYear();
         const start = new Date(year, 0, 1);
         const diff = d - start + (start.getTimezoneOffset() - d.getTimezoneOffset()) * 60 * 1000;
@@ -2143,11 +2243,11 @@ function updateTrendAnalysis() {
         const key = `${year}-W${week.toString().padStart(2, '0')}`;
         weeklyCounts[key] = (weeklyCounts[key] || 0) + 1;
     });
-    
+
     const sortedKeys = Object.keys(weeklyCounts).sort();
-    let xValues = Array.from({length: sortedKeys.length}, (_, i) => i);
+    let xValues = Array.from({ length: sortedKeys.length }, (_, i) => i);
     let yValues = sortedKeys.map(k => weeklyCounts[k]);
-    
+
     // Detect active week
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -2155,40 +2255,40 @@ function updateTrendAnalysis() {
     const currentDiff = now - currentStart + (currentStart.getTimezoneOffset() - now.getTimezoneOffset()) * 60 * 1000;
     const currentWeek = Math.floor(currentDiff / (1000 * 60 * 60 * 24 * 7));
     const currentWeekKey = `${currentYear}-W${currentWeek.toString().padStart(2, '0')}`;
-    
+
     let hasIncompleteWeek = false;
     if (sortedKeys.length > 0 && sortedKeys[sortedKeys.length - 1] === currentWeekKey) {
         hasIncompleteWeek = true;
     }
-    
+
     if (xValues.length < 2) {
         document.getElementById('trend-summary-text').innerText = "Need at least two weeks of data for trend analysis.";
         if (trendAnalysisChart) trendAnalysisChart.destroy();
         return;
     }
-    
-    const emaLine = calculateEMA(yValues, window.EMA_ALPHA); 
-    
+
+    const emaLine = calculateEMA(yValues, window.EMA_ALPHA);
+
     // OLS on EMA (exclude active week if present)
     const olsLength = hasIncompleteWeek ? xValues.length - 1 : xValues.length;
     const olsX = xValues.slice(0, olsLength);
     const olsY = emaLine.slice(0, olsLength);
-    
+
     let regLine = new Array(xValues.length).fill(null);
     let trendDirection = "stable";
     let slopeVal = 0;
-    
+
     if (olsX.length >= 2) {
         const reg = calculateLinearRegression(olsX, olsY);
         slopeVal = reg.slope;
-        
+
         // Draw trendline for all xValues
-        for(let i = 0; i < xValues.length; i++) {
+        for (let i = 0; i < xValues.length; i++) {
             regLine[i] = reg.slope * xValues[i] + reg.intercept;
         }
         trendDirection = reg.slope > 0 ? "increasing" : "decreasing";
     }
-    
+
     document.getElementById('trend-summary-text').innerHTML = `
         <span class="${slopeVal > 0 ? 'text-danger' : 'text-success'} fw-bold">
             ${slopeVal > 0 ? '<i class="bi bi-graph-up-arrow"></i>' : '<i class="bi bi-graph-down-arrow"></i>'}
@@ -2196,10 +2296,10 @@ function updateTrendAnalysis() {
         </span> 
         (avg change of ${Math.abs(slopeVal).toFixed(2)} cases/week).
     `;
-    
+
     const ctx = document.getElementById('trendChart').getContext('2d');
     if (trendAnalysisChart) trendAnalysisChart.destroy();
-    
+
     const barBackgroundColors = yValues.map((_, i) => (i === yValues.length - 1 && hasIncompleteWeek) ? '#fae8e4' : '#e2e8f0');
     const borderColors = yValues.map((_, i) => (i === yValues.length - 1 && hasIncompleteWeek) ? '#e6b8af' : '#64748b');
 
@@ -2254,21 +2354,21 @@ function updateTrendAnalysis() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { 
-                legend: { 
-                    position: 'top', 
-                    labels: { boxWidth: 12, font: {size: 10} } 
-                } 
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { boxWidth: 12, font: { size: 10 } }
+                }
             },
             scales: {
-                x: { 
-                    title: { display: true, text: 'ISO-8601 epidemiological week', font: {size: 10} },
+                x: {
+                    title: { display: true, text: 'ISO-8601 epidemiological week', font: { size: 10 } },
                     ticks: { font: { size: 9 }, maxTicksLimit: 25 },
                     grid: { drawOnChartArea: true, color: '#f1f5f9', borderDash: [2, 2] }
                 },
-                y: { 
-                    title: { display: true, text: 'Reported case count', font: {size: 10} },
-                    beginAtZero: true, 
+                y: {
+                    title: { display: true, text: 'Reported case count', font: { size: 10 } },
+                    beginAtZero: true,
                     ticks: { font: { size: 10 } },
                     grid: { drawOnChartArea: true, color: '#f1f5f9', borderDash: [2, 2] }
                 }
@@ -2280,24 +2380,24 @@ function updateTrendAnalysis() {
 async function updateCorrelationAnalysis() {
     const panel = document.getElementById('correlation-analysis-panel');
     if (!panel || panel.style.display === 'none') return;
-    
+
     const features = getFilteredFeatures();
-    if (features.length < 5) {
-        document.getElementById('correlation-summary-text').innerText = "Not enough data points for spatial clustering.";
+    if (features.length < 3) {
+        document.getElementById('correlation-summary-text').innerText = "Not enough data points for spatial clustering (minimum 3 required).";
         if (correlationAnalysisChart) correlationAnalysisChart.destroy();
         return;
     }
-    
+
     document.getElementById('correlation-summary-text').innerHTML = "<i class='spinner-border spinner-border-sm me-2'></i> Querying PostGIS for clusters...";
-    
+
     // Extract context for the backend API
     const pointsData = features.map(f => ({
         lon: f.geometry.coordinates[0],
         lat: f.geometry.coordinates[1],
-        date: f.properties.date_of_onset || f.properties.date_reported,
+        date: f.properties.date_of_onset || f.properties.test_date || f.properties.date_reported,
         disease: f.properties.disease_type
     }));
-    
+
     try {
         const response = await fetch('/api/spatial-clustering/', {
             method: 'POST',
@@ -2305,20 +2405,20 @@ async function updateCorrelationAnalysis() {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 points: pointsData,
-                diseases: visibleDiseases 
+                diseases: visibleDiseases
             })
         });
-        
+
         const data = await response.json();
         if (data.error) throw new Error(data.error);
-        
+
         const clusteredCount = data.clustered_count;
         const noiseCount = data.noise_count;
         const clusterIdsSize = data.num_clusters;
         const clusterPercentage = data.cluster_percentage;
-        
+
         let inference = "";
         if (clusterPercentage > 50) {
             inference = `<span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle"></i> Strong spatial clustering (${clusterPercentage}% of cases in ${clusterIdsSize} hotspots).</span> Potential localized outbreaks detected.`;
@@ -2327,12 +2427,12 @@ async function updateCorrelationAnalysis() {
         } else {
             inference = `<span class="text-success fw-bold">Cases are randomly distributed (${clusterPercentage}% in clusters).</span> No significant geographic hotspots detected within 5km radius.`;
         }
-        
+
         document.getElementById('correlation-summary-text').innerHTML = inference;
-        
+
         const ctx = document.getElementById('correlationChart').getContext('2d');
         if (correlationAnalysisChart) correlationAnalysisChart.destroy();
-        
+
         correlationAnalysisChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
@@ -2347,8 +2447,8 @@ async function updateCorrelationAnalysis() {
                 responsive: true,
                 maintainAspectRatio: false,
                 cutout: '70%',
-                plugins: { 
-                    legend: { position: 'right', labels: { boxWidth: 12, font: {size: 11} } }
+                plugins: {
+                    legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } }
                 }
             }
         });
@@ -2358,23 +2458,23 @@ async function updateCorrelationAnalysis() {
     }
 }
 
-window.downloadChart = function(canvasId, filename) {
+window.downloadChart = function (canvasId, filename) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    
+
     // Create a temporary canvas to draw with a white background
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = canvas.width;
     tempCanvas.height = canvas.height;
     const ctx = tempCanvas.getContext('2d');
-    
+
     // Fill white background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-    
+
     // Draw original canvas over it
     ctx.drawImage(canvas, 0, 0);
-    
+
     const link = document.createElement('a');
     link.download = filename;
     link.href = tempCanvas.toDataURL('image/png');

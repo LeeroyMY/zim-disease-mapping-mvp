@@ -130,6 +130,7 @@ class BaseDiseaseCase(models.Model):
     outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, default='active')
 
     location = gis_models.PointField(srid=4326, geography=True) # Geocoded location of the case (e.g., patient home)
+    extra_data = models.JSONField(default=dict, blank=True, help_text="Stores arbitrary dynamic columns from CSV datasets.")
 
     class Meta:
         abstract = True
@@ -189,7 +190,5 @@ class GenericDiseaseCase(BaseDiseaseCase):
     defined (like Cholera, HIV, TB). Extra columns are safely stored in a JSONB 
     field instead of requiring dangerous runtime table creation.
     """
-    extra_data = models.JSONField(default=dict, blank=True, help_text="Stores arbitrary dynamic columns from CSV datasets.")
-
     class Meta(BaseDiseaseCase.Meta):
         verbose_name_plural = "Generic Disease Cases"

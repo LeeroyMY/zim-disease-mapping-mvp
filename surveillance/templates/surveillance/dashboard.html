@@ -2,6 +2,8 @@
 {% load static %}
 
 {% block extra_head %}
+    <!-- Ensure Referer is sent to prevent tile blocking on Localhost -->
+    <meta name="referrer" content="no-referrer-when-downgrade">
     <!-- ERROR LOGGER FOR DEBUGGING -->
     <script>
         window.onerror = function(msg, url, lineNo, columnNo, error) {

@@ -63,9 +63,30 @@ document.addEventListener("DOMContentLoaded", function () {
         } catch(e) { console.error("Error parsing location", e); }
     }
 
+    const adminMapStyle = {
+        "version": 8,
+        "sources": {
+            "google-streets": {
+                "type": "raster",
+                "tiles": ["https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"],
+                "tileSize": 256,
+                "maxzoom": 20
+            }
+        },
+        "layers": [
+            {
+                "id": "google-streets-layer",
+                "type": "raster",
+                "source": "google-streets",
+                "minzoom": 0,
+                "maxzoom": 21
+            }
+        ]
+    };
+
     var map = new maplibregl.Map({
         container: 'maplibre-admin-map',
-        style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+        style: adminMapStyle,
         center: [initialLng, initialLat],
         zoom: initialZoom
     });

@@ -45,7 +45,7 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link py-3" id="my-cases-tab" data-bs-toggle="tab" data-bs-target="#my-cases-pane" type="button" role="tab">
                         <i class="bi bi-person-lines-fill text-primary me-2"></i> My Reported Cases 
-                        <span class="badge bg-primary rounded-pill ms-1">{{ user_cases.count }}</span>
+                        <span class="badge bg-primary rounded-pill ms-1">{{ user_cases|length }}</span>
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
@@ -67,6 +67,7 @@
                             <h4 class="mb-4 fw-bold"><i class="bi bi-search text-muted me-2"></i> Geocode & Report New Case</h4>
                             
                             <form id="reportCaseForm" class="bg-white p-4 rounded-4 shadow-sm border">
+                                {% csrf_token %}
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <label class="form-label small fw-bold text-secondary">Disease Type</label>
@@ -187,7 +188,7 @@
                                 {% for c in user_cases %}
                                 <tr>
                                     <td class="ps-4 fw-medium text-secondary">{{ c.patient_id|stringformat:"s"|slice:":8" }}...</td>
-                                    <td><span class="badge bg-primary">{{ c.get_disease_type_display }}</span></td>
+                                    <td><span class="badge bg-primary">{{ c.disease_type|title }}</span></td>
                                     <td>{{ c.variant|default:"-" }}</td>
                                     <td>{{ c.facility.name|default:"-" }}</td>
                                     <td>{{ c.date_of_onset|date:"M d, Y"|default:"-" }}</td>
@@ -200,7 +201,7 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="6" class="text-center py-5 text-muted">
+                                    <td colspan="7" class="text-center py-5 text-muted">
                                         <i class="bi bi-inbox fs-1 d-block mb-3 opacity-50"></i>
                                         You haven't reported any cases yet.
                                     </td>
@@ -230,7 +231,7 @@
                             <tbody>
                                 {% for c in all_cases %}
                                 <tr>
-                                    <td class="ps-4 fw-medium">{{ c.get_disease_type_display }}</td>
+                                    <td class="ps-4 fw-medium">{{ c.disease_type|title }}</td>
                                     <td>{{ c.facility.name|default:"-" }}</td>
                                     <td>{{ c.date_reported|date:"M d, Y" }}</td>
                                     <td class="text-muted" style="font-family: monospace;">{{ c.patient_id }}</td>

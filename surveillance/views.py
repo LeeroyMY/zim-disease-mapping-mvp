@@ -12,7 +12,8 @@ import re
 import random
 
 import newick
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
+import math
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -80,11 +81,12 @@ def get_all_cases(request):
                     properties.update(case.extra_data)
                 
                 # Add facility name
-                properties['facility__name'] = case.facility.name if case.facility else None
+                fac_name = case.facility.name if case.facility else (case.extra_data.get('facility_name') if hasattr(case, 'extra_data') and isinstance(case.extra_data, dict) else None)
+                properties['facility__name'] = fac_name
                 properties['disease_type'] = case.disease_type.lower()
                 properties['id'] = case.id
                 
-                if case.location:
+                if case.location and not (case.location.x == 0.0 and case.location.y == 0.0):
                     # Apply Donut Geomasking
                     r_min, r_max = get_geomasking_radii(case)
                     masked_lon, masked_lat = apply_donut_geomasking(
@@ -206,11 +208,13 @@ def get_latest_cases(request):
                 if hasattr(case, 'extra_data') and isinstance(case.extra_data, dict):
                     properties.update(case.extra_data)
                         
-                properties['facility__name'] = case.facility.name if case.facility else None
+                # Add facility name
+                fac_name = case.facility.name if case.facility else (case.extra_data.get('facility_name') if hasattr(case, 'extra_data') and isinstance(case.extra_data, dict) else None)
+                properties['facility__name'] = fac_name
                 properties['disease_type'] = case.disease_type.lower()
                 properties['id'] = case.id
                 
-                if case.location:
+                if case.location and not (case.location.x == 0.0 and case.location.y == 0.0):
                     # Apply Donut Geomasking
                     r_min, r_max = get_geomasking_radii(case)
                     masked_lon, masked_lat = apply_donut_geomasking(
@@ -288,16 +292,16 @@ def calculate_spatial_clustering(request):
         
         eps = 0.045
         minpoints = 3
-        timeframe_days = 30
+        timeframe_days = 60
         
         if disease_context == 'cholera':
             eps = 0.009 # ~1km
             minpoints = 5
             timeframe_days = 14
         elif disease_context == 'tb':
-            eps = 0.022 # ~2.5km
-            minpoints = 10
-            timeframe_days = 180
+            eps = 0.045 # ~5km district/facility transmission radius
+            minpoints = 3
+            timeframe_days = 365 # TB transmission window spans across months/year
         elif disease_context == 'typhoid':
             eps = 0.012 # ~1.3km (slow-burning urban WASH)
             minpoints = 5
@@ -315,10 +319,11 @@ def calculate_spatial_clustering(request):
         try:
             dates = []
             for p in points:
-                if p.get('date'):
+                d_val = p.get('date')
+                if d_val:
                     try:
                         # Extract the first 10 chars (YYYY-MM-DD) to safely parse, or use full isoformat
-                        dt_str = str(p['date'])[:10]
+                        dt_str = str(d_val)[:10]
                         dt = datetime.strptime(dt_str, "%Y-%m-%d")
                         dates.append(dt)
                     except ValueError:
@@ -327,21 +332,25 @@ def calculate_spatial_clustering(request):
                 max_date = max(dates)
                 cutoff_date = max_date - timedelta(days=timeframe_days)
                 for p in points:
-                    if p.get('date'):
+                    d_val = p.get('date')
+                    if d_val:
                         try:
-                            dt_str = str(p['date'])[:10]
+                            dt_str = str(d_val)[:10]
                             dt = datetime.strptime(dt_str, "%Y-%m-%d")
                             if dt >= cutoff_date:
                                 valid_points.append(p)
                         except ValueError:
                             pass
+                    else:
+                        valid_points.append(p)
             else:
                 valid_points = points
         except Exception:
             valid_points = points
             
-        if len(valid_points) < minpoints:
-             return Response({"error": f"Not enough recent cases within the {timeframe_days}-day temporal window for statistically significant clustering."}, status=400)
+        # If temporal cutoff reduces points below minpoints, fall back to all points in payload
+        if len(valid_points) < minpoints and len(points) >= minpoints:
+            valid_points = points
              
         # Format for json_to_recordset using valid_points, ensuring valid non-zero coordinates
         cleaned_points = []
@@ -355,9 +364,16 @@ def calculate_spatial_clustering(request):
             except (TypeError, ValueError):
                 pass
                 
-        if len(cleaned_points) < minpoints:
-            return Response({"error": "Not enough valid geocoded points for clustering."}, status=400)
+        if len(cleaned_points) < 3:
+            return Response({
+                "clustered_count": 0,
+                "noise_count": len(cleaned_points),
+                "num_clusters": 0,
+                "cluster_percentage": 0.0,
+                "message": "Not enough valid geocoded points for clustering (minimum 3 required)."
+            })
             
+        effective_minpoints = min(minpoints, len(cleaned_points))
         json_points = json.dumps(cleaned_points)
         
         query = """
@@ -376,7 +392,7 @@ def calculate_spatial_clustering(request):
         """
         
         with connection.cursor() as cursor:
-            cursor.execute(query, [eps, minpoints, json_points])
+            cursor.execute(query, [eps, effective_minpoints, json_points])
             row = cursor.fetchone()
             
         clustered_count = row[0] or 0
@@ -416,49 +432,89 @@ def _build_instance(row, ModelClass, facility_cache, available_facilities):
         return default
 
     try:
-        dt_str = str(get_alias(['date_of_onset', 'date', 'onset_date', 'report_date', 'date_reported'])).strip()
+        dt_val = get_alias(['date_of_onset', 'test_date', 'date', 'onset_date', 'report_date', 'date_reported', 'testdate', 'test_month'])
         parsed_date = None
-        if dt_str and dt_str not in ('nan', 'none', ''):
-            for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y'):
-                try:
-                    parsed_date = datetime.strptime(dt_str[:10], fmt).date()
-                    break
-                except ValueError:
-                    continue
+        if dt_val is not None and not (isinstance(dt_val, float) and math.isnan(dt_val)):
+            if isinstance(dt_val, (datetime, date)):
+                parsed_date = dt_val if isinstance(dt_val, date) else dt_val.date()
+            else:
+                dt_str = str(dt_val).strip()
+                if dt_str and dt_str.lower() not in ('nan', 'none', '', 'nat'):
+                    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m', '%Y/%m'):
+                        try:
+                            parsed_date = datetime.strptime(dt_str[:10], fmt).date()
+                            break
+                        except ValueError:
+                            continue
         # Guarantee: every record gets a date. Fall back to today if unparseable.
         if parsed_date is None:
             parsed_date = datetime.now().date()
                 
         lon_val = get_alias(['lon', 'longitude', 'longtude', 'lng', 'long'])
         lat_val = get_alias(['lat', 'latitude'])
-        lon = float(lon_val) if lon_val not in ['', None, 'nan'] else 0.0
-        lat = float(lat_val) if lat_val not in ['', None, 'nan'] else 0.0
+        try:
+            lon = float(lon_val) if lon_val not in ['', None, 'nan'] else 0.0
+        except (ValueError, TypeError):
+            lon = 0.0
+        try:
+            lat = float(lat_val) if lat_val not in ['', None, 'nan'] else 0.0
+        except (ValueError, TypeError):
+            lat = 0.0
         
         age_val = get_alias(['age', 'patient_age', 'age_years'])
-        try:
-            age = int(float(age_val)) if age_val not in ['', None, 'nan'] else random.randint(5, 70)
-        except (ValueError, TypeError):
-            age = random.randint(5, 70)
+        age = None
+        if age_val not in ['', None, 'nan']:
+            try:
+                age_float = float(age_val)
+                if not math.isnan(age_float) and 0 <= age_float <= 120:
+                    age = int(age_float)
+            except (ValueError, TypeError):
+                age = None
         
         gender_raw = str(get_alias(['gender', 'sex', 'patient_gender'], '')).strip().upper()
-        if gender_raw and gender_raw[0] in ('M', 'F'):
-            gender = gender_raw[0]
+        if gender_raw.startswith('F'):
+            gender = 'F'
+        elif gender_raw.startswith('M'):
+            gender = 'M'
         else:
-            gender = random.choice(['M', 'F'])  # Assign rather than leave unknown
+            gender = 'U'
         
-        disease_type = str(get_alias(['disease_type', 'disease', 'condition'], 'unknown')).lower()
+        disease_type = str(get_alias(['disease_type', 'disease', 'condition'], 'tb')).lower()
+        if disease_type == 'unknown':
+            disease_type = 'tb'
 
+        # Variant mapping: check explicit variant first, or derive from rr_tb and rif_result
         variant_raw = get_alias(['variant', 'strain', 'serotype', 'subtype'])
-        variant = str(variant_raw) if variant_raw else 'Unspecified'
+        if variant_raw and str(variant_raw).strip().lower() not in ['', 'nan', 'none']:
+            variant = str(variant_raw).strip()
+        else:
+            rr_val = str(get_alias(['rr_tb', 'rr', 'rrtb'], '')).strip()
+            rif_val = str(get_alias(['rif_result', 'rif_resistance', 'rifampicin_result'], '')).strip().lower()
+            if rr_val in ['1', '1.0', 'true', 'True'] or ('detected' in rif_val and 'not detected' not in rif_val):
+                variant = 'RR-TB'
+            elif rr_val in ['0', '0.0', 'false', 'False'] or 'not detected' in rif_val:
+                variant = 'Rif-Sensitive'
+            elif rif_val:
+                variant = rif_val.title()
+            else:
+                variant = 'Unspecified'
 
-        location_name_raw = get_alias(['location_name', 'location', 'city', 'district', 'region', 'ward', 'village'])
-        location_name = str(location_name_raw) if location_name_raw else 'Unknown Location'
+        adm2 = get_alias(['hdx_adm2_district', 'district', 'city', 'ward'])
+        adm1 = get_alias(['hdx_adm1_province', 'province', 'region'])
+        if adm2 and adm1 and str(adm2).strip().lower() != 'missing' and str(adm1).strip().lower() != 'missing':
+            location_name = f"{str(adm2).strip()}, {str(adm1).strip()}"
+        elif adm2 and str(adm2).strip().lower() != 'missing':
+            location_name = str(adm2).strip()
+        elif adm1 and str(adm1).strip().lower() != 'missing':
+            location_name = str(adm1).strip()
+        else:
+            location_name = str(get_alias(['location_name', 'location'], 'Unknown Location')).strip()
 
         severity_raw = get_alias(['severity', 'case_severity'])
         try:
-            severity = int(severity_raw) if severity_raw not in ['', None, 'nan'] else random.choice([1, 2, 3])
+            severity = int(severity_raw) if severity_raw not in ['', None, 'nan'] else (3 if variant == 'RR-TB' else 2)
         except (ValueError, TypeError):
-            severity = random.choice([1, 2, 3])
+            severity = 3 if variant == 'RR-TB' else 2
 
         outcome_raw = str(get_alias(['outcome', 'case_outcome', 'status'], '')).lower().strip()
         outcome_map = {
@@ -467,27 +523,36 @@ def _build_instance(row, ModelClass, facility_cache, available_facilities):
             'deceased': 'deceased', 'dead': 'deceased', 'died': 'deceased', 'death': 'deceased',
             'referred': 'referred', 'transferred': 'referred',
         }
-        outcome = outcome_map.get(outcome_raw, random.choice(['active', 'recovered', 'deceased', 'referred']))
+        outcome = outcome_map.get(outcome_raw, 'active')
 
         location = Point(lon, lat, srid=4326)
         
         nearest_facility = None
-        cache_key = (lon, lat)
-        
-        # Performance Optimization: Spatial queries (calculating nearest facility) are computationally expensive.
-        # When bulk importing datasets, many cases often originate from the exact same coordinates (e.g., same district center).
-        # We cache the calculated nearest facility by coordinate to avoid redundant PostGIS Distance queries.
-        if cache_key in facility_cache:
-            nearest_facility = facility_cache[cache_key]
-        elif available_facilities:
-            min_dist = float('inf')
+        facility_name_raw = str(get_alias(['facility', 'reporting facility', 'facility_name', 'health_facility'], '')).strip()
+
+        # Try exact/substring match by facility name
+        if facility_name_raw and available_facilities:
+            fn_lower = facility_name_raw.lower()
             for f in available_facilities:
-                if f.location:
-                    dist = f.location.distance(location)
-                    if dist < min_dist:
-                        min_dist = dist
-                        nearest_facility = f
-            facility_cache[cache_key] = nearest_facility
+                f_lower = f.name.lower()
+                if fn_lower == f_lower or fn_lower in f_lower or f_lower in fn_lower:
+                    nearest_facility = f
+                    break
+
+        # If not matched by name, find nearest facility by coordinate
+        if not nearest_facility and available_facilities and (lon != 0.0 or lat != 0.0):
+            cache_key = (lon, lat)
+            if cache_key in facility_cache:
+                nearest_facility = facility_cache[cache_key]
+            else:
+                min_dist = float('inf')
+                for f in available_facilities:
+                    if f.location:
+                        dist = f.location.distance(location)
+                        if dist < min_dist:
+                            min_dist = dist
+                            nearest_facility = f
+                facility_cache[cache_key] = nearest_facility
 
         kwargs = {
             'disease_type': disease_type,
@@ -504,24 +569,23 @@ def _build_instance(row, ModelClass, facility_cache, available_facilities):
             'outcome': outcome,
         }
         
-        known_keys = ['disease_type', 'disease', 'condition', 'variant', 'strain', 'type', 
-                      'age', 'patient_age', 'gender', 'sex', 'patient_gender', 
-                      'date_of_onset', 'date', 'onset_date', 'location_name', 'location', 
-                      'city', 'district', 'region', 'lon', 'longitude', 'longtude', 'lng', 
-                      'lat', 'latitude', 'facility', 'reporting facility', 'facility_name']
-        
         extra_dict = {}
-        for k, v in row_lower.items():
-            if k not in known_keys:
-                safe_col = "".join([c if c.isalnum() else '_' for c in k]).strip('_')
-                if not safe_col or safe_col[0].isdigit():
-                    safe_col = "col_" + safe_col
-                if hasattr(ModelClass, safe_col):
-                    kwargs[safe_col] = str(v)
-                else:
-                    extra_dict[safe_col] = str(v)
-                    
-        # If the model is GenericDiseaseCase, attach extra_data
+        if facility_name_raw:
+            extra_dict['facility_name'] = facility_name_raw
+            
+        for k, v in row.items():
+            if k is None:
+                continue
+            k_clean = str(k).strip()
+            v_str = str(v).strip() if v is not None else ''
+            if v_str.lower() == 'nan':
+                v_str = ''
+            safe_col = "".join([c if c.isalnum() else '_' for c in k_clean.lower()]).strip('_')
+            if not safe_col or safe_col[0].isdigit():
+                safe_col = "col_" + safe_col
+            extra_dict[safe_col] = v_str
+
+        # Attach extra_data to all models supporting it
         if hasattr(ModelClass, 'extra_data'):
             kwargs['extra_data'] = extra_dict
 
@@ -636,8 +700,9 @@ def upload_dataset(request):
                 
             if instances_to_create:
                 ModelClass.objects.bulk_create(instances_to_create)
-                
-            return JsonResponse({'status': 'success', 'message': f'Imported {count} records.'})
+            
+            cache.delete('all_cases_geojson')
+            return JsonResponse({'status': 'success', 'message': f'Imported {count} records.', 'records_imported': count})
         except Exception as e:
              return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
              
@@ -712,6 +777,7 @@ def report_case(request):
                 kwargs['extra_data'] = extra_dict
 
             ModelClass.objects.create(**kwargs)
+            cache.delete('all_cases_geojson')
             return JsonResponse({'status': 'success', 'message': 'Case reported successfully.'})
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -805,7 +871,10 @@ def edit_case(request, disease_type, case_id):
         messages.error(request, "Case not found.")
         return redirect('manage_cases')
 
-    case = get_object_or_404(ModelClass, id=case_id, reported_by=request.user)
+    if request.user.is_superuser or request.user.is_staff:
+        case = get_object_or_404(ModelClass, id=case_id)
+    else:
+        case = get_object_or_404(ModelClass, id=case_id, reported_by=request.user)
     
     if request.method == 'POST':
         case.disease_type = request.POST.get('disease_type', case.disease_type)
@@ -850,6 +919,7 @@ def edit_case(request, disease_type, case_id):
                 pass
 
         case.save()
+        cache.delete('all_cases_geojson')
         messages.success(request, "Case updated successfully!")
         return redirect('manage_cases')
         

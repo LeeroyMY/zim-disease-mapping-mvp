@@ -1,31 +1,14 @@
-import django
-import os
-import traceback
-import faulthandler
-import threading
-import sys
+from django.test import SimpleTestCase
+from django.urls import reverse, resolve
 
-faulthandler.enable()
-
-def dump_trace():
-    print("DUMPING TRACEBACK")
-    faulthandler.dump_traceback(sys.stderr)
-    os._exit(1)
-
-timer = threading.Timer(10.0, dump_trace)
-timer.start()
-
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
-try:
-    print("setting up...")
-    django.setup()
-    print("setup done")
-    import core.urls
-    print("SUCCESS: Loaded core.urls")
-except Exception:
-    traceback.print_exc()
-finally:
-    timer.cancel()
+class UrlsTestCase(SimpleTestCase):
+    def test_url_resolutions(self):
+        self.assertEqual(reverse('root_redirect'), '/')
+        self.assertEqual(reverse('login'), '/accounts/login/')
+        self.assertEqual(reverse('dashboard_root'), '/dashboard/')
+        self.assertEqual(reverse('manage_cases'), '/cases/manage/')
+        self.assertEqual(reverse('get_all_cases'), '/api/cases/')
+        self.assertEqual(reverse('get_regions'), '/api/regions/')
+        self.assertEqual(reverse('upload_dataset'), '/api/upload/')
+        self.assertEqual(reverse('report_case'), '/api/report/')
+        self.assertEqual(reverse('spatial_clustering'), '/api/spatial-clustering/')
